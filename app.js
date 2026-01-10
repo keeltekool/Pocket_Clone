@@ -102,9 +102,13 @@ async function handleAuth(e) {
 
     if (result.error) {
       showError(result.error.message);
+    } else if (!isLoginMode && result.data?.user && !result.data?.session) {
+      // Signup succeeded but email confirmation required
+      showError('Check your email to confirm your account!');
     }
   } catch (err) {
-    showError('An error occurred. Please try again.');
+    console.error('Auth error:', err);
+    showError(err.message || 'An error occurred. Please try again.');
   }
 
   authBtn.disabled = false;
