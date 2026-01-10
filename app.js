@@ -153,7 +153,7 @@ function extractDomain(url) {
 }
 
 function getFallbackImage(domain) {
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=256`;
 }
 
 function formatTimeAgo(dateString) {

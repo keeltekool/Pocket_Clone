@@ -488,21 +488,10 @@ header h1 {
    ═══════════════════════════════════════════════════════════════ */
 
 .links-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-lg);
-}
-
-@media (min-width: 640px) {
-  .links-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (min-width: 1024px) {
-  .links-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: 700px;
 }
 
 
@@ -512,13 +501,13 @@ header h1 {
 
 .link-card {
   display: grid;
-  grid-template-columns: 100px 1fr auto;
-  gap: var(--space-md);
+  grid-template-columns: 80px 1fr auto;
+  gap: var(--space-sm);
   align-items: center;
-  padding: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
   background: var(--warm-white);
   border: 1px solid var(--cream-dark);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   text-decoration: none;
   color: inherit;
   transition: all 0.3s var(--ease-out);
@@ -567,8 +556,8 @@ header h1 {
 
 /* Card Image */
 .card-image {
-  width: 100px;
-  height: 70px;
+  width: 80px;
+  height: 56px;
   border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--cream-dark);
@@ -580,6 +569,7 @@ header h1 {
   height: 100%;
   object-fit: cover;
   transition: transform 0.4s var(--ease-out);
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .link-card:hover .card-image img {
