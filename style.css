@@ -106,6 +106,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: var(--space-xl);
+  text-align: center;
 
   /* Centered warm glow */
   background:
@@ -195,12 +196,14 @@ body {
 }
 
 .show-password input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px;
   margin: 0;
   padding: 0;
   cursor: pointer;
   accent-color: var(--terracotta);
+  border-radius: 0;
 }
 
 .show-password:hover {
