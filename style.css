@@ -888,8 +888,13 @@ header h1 {
   transition: all 0.3s var(--ease-out);
   position: relative;
   overflow: visible;
+  z-index: 1;
 
   animation: cardSlideIn 0.4s var(--ease-out) backwards;
+}
+
+.link-card:has(.bucket-dropdown-menu.open) {
+  z-index: 1000;
 }
 
 .card-link {

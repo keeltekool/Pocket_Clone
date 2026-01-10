@@ -519,18 +519,24 @@ function toggleBucketDropdown(linkId) {
   if (!menu) return;
 
   const isOpen = menu.classList.contains('open');
+  const card = menu.closest('.link-card');
 
   // Close all other dropdowns first
   closeAllDropdowns();
 
   if (!isOpen) {
     menu.classList.add('open');
+    // Raise this card above others
+    if (card) card.style.zIndex = '1000';
   }
 }
 
 function closeAllDropdowns() {
   document.querySelectorAll('.bucket-dropdown-menu.open').forEach(menu => {
     menu.classList.remove('open');
+    // Reset z-index on parent card
+    const card = menu.closest('.link-card');
+    if (card) card.style.zIndex = '';
   });
 }
 
