@@ -186,8 +186,8 @@ function createLinkCard(link) {
     <div class="card-content">
       <h3 class="card-title">${escapeHtml(link.title || link.url)}</h3>
       <span class="card-domain">${escapeHtml(link.domain)}</span>
-      <span class="card-time">${formatTimeAgo(link.created_at)}</span>
     </div>
+    <span class="card-date">${formatTimeAgo(link.created_at)}</span>
     <button class="delete-btn" title="Delete">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
