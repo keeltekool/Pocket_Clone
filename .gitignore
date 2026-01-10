@@ -1,0 +1,13 @@
+# Supabase credentials (keep secret!)
+supabase-config.js
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pocket Clone</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Auth Section (shown when logged out) -->
+    <div id="auth-section" class="auth-container">
+      <h1>Pocket Clone</h1>
+      <p class="tagline">Save links for later</p>
+
+      <form id="auth-form">
+        <input type="email" id="email" placeholder="Email" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button type="submit" id="auth-btn">Login</button>
+      </form>
+      <p class="auth-toggle">
+        <span id="auth-mode-text">Don't have an account?</span>
+        <a href="#" id="toggle-auth">Sign up</a>
+      </p>
+      <p id="auth-error" class="error"></p>
+    </div>
+
+    <!-- Main App (shown when logged in) -->
+    <div id="main-section" class="main-container" style="display: none;">
+      <header>
+        <h1>Pocket Clone</h1>
+        <button id="logout-btn">Logout</button>
+      </header>
+
+      <!-- Add Link Form -->
+      <form id="add-link-form">
+        <input type="url" id="url-input" placeholder="Paste a URL..." required>
+        <button type="submit" id="add-btn">Save</button>
+      </form>
+
+      <!-- Loading indicator for adding -->
+      <div id="add-loading" class="loading" style="display: none;">
+        <span>Fetching page info...</span>
+      </div>
+
+      <!-- Links Grid -->
+      <div id="links-container">
+        <!-- Empty state -->
+        <div id="empty-state" class="empty-state">
+          <p>No saved links yet</p>
+          <p class="subtle">Paste a URL above to get started</p>
+        </div>
+
+        <!-- Links will be rendered here -->
+        <div id="links-grid" class="links-grid"></div>
+      </div>
+
+      <!-- Loading indicator for fetching links -->
+      <div id="links-loading" class="loading" style="display: none;">
+        <span>Loading your links...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Config (user creates this) -->
+  <script src="supabase-config.js"></script>
+  <!-- App Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
