@@ -57,6 +57,9 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+
+  /* Sidebar */
+  --sidebar-width: 240px;
 }
 
 
@@ -303,7 +306,7 @@ body {
    ═══════════════════════════════════════════════════════════════ */
 
 .main-container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: var(--space-lg) var(--space-lg) var(--space-2xl);
   animation: mainFadeIn 0.6s var(--ease-out);
@@ -325,7 +328,7 @@ header {
   justify-content: space-between;
   padding: var(--space-md) 0 var(--space-xl);
   border-bottom: 1px solid var(--cream-dark);
-  margin-bottom: var(--space-xl);
+  margin-bottom: var(--space-lg);
 }
 
 header h1 {
@@ -353,6 +356,376 @@ header h1 {
   color: var(--ink);
   border-color: var(--ink-faint);
   background: var(--warm-white);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   App Layout (Sidebar + Main)
+   ═══════════════════════════════════════════════════════════════ */
+
+.app-layout {
+  display: flex;
+  gap: var(--space-xl);
+}
+
+.bucket-sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  padding: var(--space-md) 0;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Bucket Sidebar
+   ═══════════════════════════════════════════════════════════════ */
+
+.bucket-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s var(--ease-out);
+  position: relative;
+}
+
+.bucket-item:hover {
+  background: var(--terracotta-glow);
+}
+
+.bucket-item.active {
+  background: var(--terracotta-pale);
+}
+
+.bucket-item.active .bucket-name {
+  color: var(--terracotta);
+  font-weight: 600;
+}
+
+.bucket-name {
+  flex: 1;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s;
+}
+
+.bucket-count {
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+  background: var(--cream-dark);
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: var(--space-sm);
+  flex-shrink: 0;
+}
+
+.bucket-menu-btn {
+  opacity: 0;
+  background: none;
+  border: none;
+  padding: 4px;
+  margin-left: var(--space-xs);
+  cursor: pointer;
+  color: var(--ink-muted);
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bucket-item:hover .bucket-menu-btn {
+  opacity: 1;
+}
+
+.bucket-menu-btn:hover {
+  background: var(--cream-dark);
+  color: var(--ink);
+}
+
+.bucket-divider {
+  height: 1px;
+  background: var(--cream-dark);
+  margin: var(--space-sm) var(--space-md);
+}
+
+.bucket-header {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+}
+
+.new-bucket-section {
+  margin-top: var(--space-sm);
+  padding: 0 var(--space-md);
+}
+
+.new-bucket-btn {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: transparent;
+  border: 1.5px dashed var(--cream-dark);
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s var(--ease-out);
+}
+
+.new-bucket-btn:hover {
+  border-color: var(--terracotta-soft);
+  color: var(--terracotta);
+  background: var(--terracotta-glow);
+}
+
+.new-bucket-form {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+}
+
+.new-bucket-form input {
+  flex: 1;
+  padding: var(--space-sm);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  border: 1.5px solid var(--terracotta-soft);
+  border-radius: var(--radius-sm);
+  background: var(--warm-white);
+  outline: none;
+}
+
+.new-bucket-form input:focus {
+  box-shadow: 0 0 0 3px var(--terracotta-glow);
+}
+
+.new-bucket-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.new-bucket-actions button {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-confirm {
+  background: var(--terracotta);
+  color: white;
+}
+
+.btn-confirm:hover {
+  background: var(--terracotta-soft);
+}
+
+.btn-cancel {
+  background: var(--cream-dark);
+  color: var(--ink-muted);
+}
+
+.btn-cancel:hover {
+  background: var(--ink-faint);
+  color: var(--ink);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Bucket Context Menu
+   ═══════════════════════════════════════════════════════════════ */
+
+.bucket-context-menu {
+  position: fixed;
+  background: var(--warm-white);
+  border: 1px solid var(--cream-dark);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  min-width: 140px;
+  padding: var(--space-xs);
+}
+
+.bucket-context-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.bucket-context-menu button:hover {
+  background: var(--cream);
+}
+
+.bucket-context-menu button.danger {
+  color: var(--danger);
+}
+
+.bucket-context-menu button.danger:hover {
+  background: var(--danger-soft);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Mobile Filter Bar
+   ═══════════════════════════════════════════════════════════════ */
+
+.mobile-filter-bar {
+  display: none;
+  margin-bottom: var(--space-md);
+}
+
+.mobile-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--warm-white);
+  border: 1px solid var(--cream-dark);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mobile-filter-btn:hover {
+  border-color: var(--ink-faint);
+}
+
+.mobile-filter-btn svg {
+  color: var(--ink-muted);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Mobile Bucket Sheet
+   ═══════════════════════════════════════════════════════════════ */
+
+.mobile-bucket-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0s 0.3s, opacity 0.3s;
+}
+
+.mobile-bucket-sheet.open {
+  visibility: visible;
+  opacity: 1;
+  transition: visibility 0s, opacity 0.3s;
+}
+
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(44, 40, 37, 0.4);
+}
+
+.sheet-content {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--warm-white);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  max-height: 70vh;
+  transform: translateY(100%);
+  transition: transform 0.3s var(--ease-out);
+}
+
+.mobile-bucket-sheet.open .sheet-content {
+  transform: translateY(0);
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--cream-dark);
+}
+
+.sheet-header h3 {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.sheet-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cream);
+  border: none;
+  border-radius: 50%;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sheet-close:hover {
+  background: var(--cream-dark);
+  color: var(--ink);
+}
+
+.mobile-bucket-list {
+  padding: var(--space-md);
+  overflow-y: auto;
+  max-height: calc(70vh - 80px);
+}
+
+.mobile-bucket-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mobile-bucket-item:hover {
+  background: var(--cream);
+}
+
+.mobile-bucket-item.active {
+  background: var(--terracotta-pale);
+  color: var(--terracotta);
+  font-weight: 600;
 }
 
 
@@ -500,20 +873,27 @@ header h1 {
 
 .link-card {
   display: grid;
-  grid-template-columns: 80px 1fr 100px auto;
+  grid-template-columns: 1fr auto;
   gap: var(--space-sm);
   align-items: center;
-  padding: var(--space-sm) var(--space-md);
   background: var(--warm-white);
   border: 1px solid var(--cream-dark);
   border-radius: var(--radius-md);
-  text-decoration: none;
-  color: inherit;
   transition: all 0.3s var(--ease-out);
   position: relative;
   overflow: hidden;
 
   animation: cardSlideIn 0.4s var(--ease-out) backwards;
+}
+
+.card-link {
+  display: grid;
+  grid-template-columns: 80px 1fr 100px;
+  gap: var(--space-sm);
+  align-items: center;
+  padding: var(--space-sm) 0 var(--space-sm) var(--space-md);
+  text-decoration: none;
+  color: inherit;
 }
 
 @keyframes cardSlideIn {
@@ -619,6 +999,113 @@ header h1 {
 }
 
 
+/* Card Actions */
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-right: var(--space-md);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Bucket Dropdown (on cards)
+   ═══════════════════════════════════════════════════════════════ */
+
+.bucket-dropdown {
+  position: relative;
+}
+
+.bucket-dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--cream);
+  border: 1px solid var(--cream-dark);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 0.15s var(--ease-out);
+  white-space: nowrap;
+}
+
+.bucket-dropdown-btn:hover {
+  border-color: var(--ink-faint);
+  background: var(--cream-dark);
+}
+
+.bucket-icon {
+  flex-shrink: 0;
+}
+
+.bucket-dropdown-text {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-arrow {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.bucket-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 160px;
+  background: var(--warm-white);
+  border: 1px solid var(--cream-dark);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  margin-top: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: all 0.2s var(--ease-out);
+}
+
+.bucket-dropdown-menu.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.bucket-option {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.bucket-option:hover {
+  background: var(--cream);
+}
+
+.bucket-option.selected {
+  background: var(--terracotta-glow);
+  color: var(--terracotta);
+  font-weight: 500;
+}
+
+.bucket-option-new {
+  border-top: 1px solid var(--cream-dark);
+  color: var(--terracotta);
+  font-weight: 500;
+}
+
+.bucket-option-new:hover {
+  background: var(--terracotta-glow);
+}
+
+
 /* Delete Button */
 .delete-btn {
   width: 36px;
@@ -655,18 +1142,32 @@ header h1 {
    Mobile Adjustments
    ═══════════════════════════════════════════════════════════════ */
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .main-container {
     padding: var(--space-md);
   }
 
   header {
     padding: var(--space-sm) 0 var(--space-lg);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-md);
   }
 
   header h1 {
     font-size: 1.5rem;
+  }
+
+  /* Hide sidebar on mobile */
+  .bucket-sidebar {
+    display: none;
+  }
+
+  /* Show mobile filter */
+  .mobile-filter-bar {
+    display: block;
+  }
+
+  .app-layout {
+    flex-direction: column;
   }
 
   #add-link-form {
@@ -677,17 +1178,37 @@ header h1 {
     width: 100%;
   }
 
-  .link-card {
-    grid-template-columns: 80px 1fr auto;
+  .card-link {
+    grid-template-columns: 70px 1fr;
+  }
+
+  .card-date {
+    display: none;
   }
 
   .card-image {
-    width: 80px;
-    height: 60px;
+    width: 70px;
+    height: 50px;
+  }
+
+  .card-actions {
+    flex-direction: column;
+    gap: 4px;
+    padding-right: var(--space-sm);
+  }
+
+  .bucket-dropdown-btn {
+    padding: 4px 8px;
+  }
+
+  .bucket-dropdown-text {
+    display: none;
   }
 
   .delete-btn {
     opacity: 1;
+    width: 32px;
+    height: 32px;
   }
 }
 

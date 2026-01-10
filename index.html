@@ -38,34 +38,90 @@
         <button id="logout-btn">Logout</button>
       </header>
 
-      <!-- Add Link Form -->
-      <form id="add-link-form">
-        <input type="url" id="url-input" placeholder="Paste a URL..." required>
-        <button type="submit" id="add-btn">Save</button>
-      </form>
+      <!-- App Layout with Sidebar -->
+      <div class="app-layout">
+        <!-- Bucket Sidebar (Desktop) -->
+        <aside id="bucket-sidebar" class="bucket-sidebar">
+          <!-- Rendered by JavaScript -->
+        </aside>
 
-      <!-- Loading indicator for adding -->
-      <div id="add-loading" class="loading" style="display: none;">
-        <span>Fetching page info...</span>
-      </div>
+        <!-- Main Content -->
+        <main class="main-content">
+          <!-- Mobile Filter Bar -->
+          <div class="mobile-filter-bar">
+            <button id="mobile-filter-btn" class="mobile-filter-btn">
+              <span id="mobile-filter-name">All Links</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+          </div>
 
-      <!-- Links Grid -->
-      <div id="links-container">
-        <!-- Empty state -->
-        <div id="empty-state" class="empty-state">
-          <p>No saved links yet</p>
-          <p class="subtle">Paste a URL above to get started</p>
-        </div>
+          <!-- Add Link Form -->
+          <form id="add-link-form">
+            <input type="url" id="url-input" placeholder="Paste a URL..." required>
+            <button type="submit" id="add-btn">Save</button>
+          </form>
 
-        <!-- Links will be rendered here -->
-        <div id="links-grid" class="links-grid"></div>
-      </div>
+          <!-- Loading indicator for adding -->
+          <div id="add-loading" class="loading" style="display: none;">
+            <span>Fetching page info...</span>
+          </div>
 
-      <!-- Loading indicator for fetching links -->
-      <div id="links-loading" class="loading" style="display: none;">
-        <span>Loading your links...</span>
+          <!-- Links Grid -->
+          <div id="links-container">
+            <!-- Empty state -->
+            <div id="empty-state" class="empty-state">
+              <p>No saved links yet</p>
+              <p class="subtle">Paste a URL above to get started</p>
+            </div>
+
+            <!-- Links will be rendered here -->
+            <div id="links-grid" class="links-grid"></div>
+          </div>
+
+          <!-- Loading indicator for fetching links -->
+          <div id="links-loading" class="loading" style="display: none;">
+            <span>Loading your links...</span>
+          </div>
+        </main>
       </div>
     </div>
+  </div>
+
+  <!-- Mobile Bucket Sheet -->
+  <div id="mobile-bucket-sheet" class="mobile-bucket-sheet">
+    <div class="sheet-backdrop" onclick="closeMobileBucketSheet()"></div>
+    <div class="sheet-content">
+      <div class="sheet-header">
+        <h3>Filter by Bucket</h3>
+        <button class="sheet-close" onclick="closeMobileBucketSheet()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="mobile-bucket-list" class="mobile-bucket-list">
+        <!-- Rendered by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Bucket Context Menu -->
+  <div id="bucket-context-menu" class="bucket-context-menu" style="display: none;">
+    <button onclick="startRenameBucket()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+      </svg>
+      Rename
+    </button>
+    <button class="danger" onclick="confirmDeleteBucket()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+      </svg>
+      Delete
+    </button>
   </div>
 
   <!-- Supabase JS -->

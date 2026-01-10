@@ -15,7 +15,7 @@
 |---------|----------|
 | Adding links | Manual paste only (input field) |
 | Link display | URL + Title + **Thumbnail image** (og:image) |
-| Organization | None - simple chronological list |
+| Organization | **Buckets** - named collections for categorization |
 | Read status | None - save or delete only |
 | Title | Auto-fetch from page |
 | Delete | Immediate (no confirmation dialog) |
@@ -34,19 +34,38 @@
 
 ## UI Design
 
-### Link Card Layout
+### App Layout (Desktop)
 ```
-┌─────────────────────────────────────────┐
-│ ┌───────────┐                           │
-│ │           │  Article Title Here       │
-│ │  og:image │  domain.com               │
-│ │ thumbnail │  Saved 2 hours ago    [🗑] │
-│ └───────────┘                           │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Pocket Clone                                     [Logout]   │
+├────────────────┬─────────────────────────────────────────────┤
+│  SIDEBAR       │  MAIN CONTENT                               │
+│  ┌──────────┐  │  ┌─────────────────────────────────────────┐│
+│  │All Links │  │  │ [URL Input]              [Save Button] ││
+│  └──────────┘  │  └─────────────────────────────────────────┘│
+│  ───────────   │                                             │
+│  BUCKETS       │  ┌─────────────────────────────────────────┐│
+│  ┌──────────┐  │  │ [Link Card]  [Bucket ▼] [Delete]       ││
+│  │Work    (5)│  │  │ [Link Card]  [Bucket ▼] [Delete]       ││
+│  │Read   (12)│  │  │ [Link Card]  [Bucket ▼] [Delete]       ││
+│  └──────────┘  │  └─────────────────────────────────────────┘│
+│  [+ New Bucket]│                                             │
+└────────────────┴─────────────────────────────────────────────┘
 ```
 
-- **Mobile**: Cards stack vertically
-- **Desktop**: 2-3 column responsive grid
+### Link Card Layout
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ┌───────────┐                                               │
+│ │           │  Article Title Here                           │
+│ │  og:image │  domain.com          [📁 Bucket ▼] [🗑]      │
+│ │ thumbnail │  Saved 2 hours ago                            │
+│ └───────────┘                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **Mobile**: Sidebar hidden, filter dropdown at top, bottom sheet for bucket selection
+- **Desktop**: Two-column layout with persistent sidebar
 - **Fallback image**: If no og:image, use favicon via Google's service
 
 ---
@@ -55,9 +74,11 @@
 
 ```
 Pocket_Clone/
-├── index.html              # Single page app
-├── style.css               # Pocket-like styling
-├── app.js                  # Main application logic
+├── index.html              # Single page app with sidebar layout
+├── style.css               # Literary minimalism styling + bucket UI
+├── app.js                  # Main application logic + bucket management
+├── save.html               # iOS shortcut quick-save page
+├── shortcut.html           # iOS shortcut installation guide
 ├── supabase-config.js      # Supabase credentials (gitignored!)
 ├── supabase-config.example.js  # Template for config
 ├── PRD.md                  # This document
@@ -67,6 +88,29 @@ Pocket_Clone/
 ---
 
 ## Database Schema (Supabase)
+
+### Table: `buckets`
+
+```sql
+CREATE TABLE public.buckets (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT buckets_user_name_unique UNIQUE (user_id, name)
+);
+
+-- Enable RLS
+ALTER TABLE public.buckets ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Users can view own buckets" ON public.buckets FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can create own buckets" ON public.buckets FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own buckets" ON public.buckets FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own buckets" ON public.buckets FOR DELETE USING (auth.uid() = user_id);
+
+CREATE INDEX idx_buckets_user_id ON public.buckets(user_id);
+```
 
 ### Table: `links`
 
@@ -78,6 +122,7 @@ CREATE TABLE links (
   title TEXT,
   image_url TEXT,
   domain TEXT,
+  bucket_id UUID REFERENCES public.buckets(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -91,13 +136,55 @@ CREATE POLICY "Users view own links" ON links
 CREATE POLICY "Users insert own links" ON links
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+CREATE POLICY "Users update own links" ON links
+  FOR UPDATE USING (auth.uid() = user_id);
+
 CREATE POLICY "Users delete own links" ON links
   FOR DELETE USING (auth.uid() = user_id);
 
 -- Indexes for performance
 CREATE INDEX links_user_id_idx ON links(user_id);
 CREATE INDEX links_created_at_idx ON links(created_at DESC);
+CREATE INDEX idx_links_bucket_id ON links(bucket_id);
 ```
+
+### Migration: Add bucket_id to existing links table
+
+If you already have the `links` table, run this to add bucket support:
+
+```sql
+ALTER TABLE public.links
+ADD COLUMN bucket_id UUID REFERENCES public.buckets(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_links_bucket_id ON public.links(bucket_id);
+```
+
+---
+
+## Buckets Feature
+
+### Overview
+Buckets are named collections that allow users to organize their saved links. New links always start uncategorized and can be assigned to buckets later.
+
+### Key Behaviors
+| Behavior | Description |
+|----------|-------------|
+| New links | Always saved with `bucket_id = null` (uncategorized) |
+| All Links view | Shows all links regardless of bucket |
+| Bucket view | Shows only links in that specific bucket |
+| Delete bucket | Links become uncategorized (not deleted) |
+| Bucket names | Must be unique per user |
+
+### Bucket Management
+- **Create**: Click "+ New Bucket" in sidebar, enter name
+- **Rename**: Right-click bucket → Rename (or use context menu)
+- **Delete**: Right-click bucket → Delete (confirmation required)
+
+### Assigning Links to Buckets
+- Each link card has a bucket dropdown selector
+- Click dropdown to see all buckets + "No bucket" option
+- Can create new bucket directly from dropdown
+- When viewing a bucket, assigning a link to a different bucket removes it from current view
 
 ---
 
@@ -118,9 +205,10 @@ CREATE INDEX links_created_at_idx ON links(created_at DESC);
    - **Project URL**: `https://xxxxx.supabase.co`
    - **anon public key**: `eyJhbGc...` (the long one under "Project API keys")
 
-### Step 3: Create Links Table
+### Step 3: Create Database Tables
 1. Go to **SQL Editor**
 2. Paste and run the SQL from "Database Schema" section above
+3. Run the `buckets` table SQL first, then `links` table
 
 ### Step 4: Configure Auth (Optional)
 1. Go to **Authentication → Providers** - Email should be enabled
@@ -199,7 +287,8 @@ await supabaseClient.from('links').insert({
   url: url,
   title: title,
   image_url: imageUrl,
-  domain: extractDomain(url)
+  domain: extractDomain(url),
+  bucket_id: null // New links always uncategorized
 });
 ```
 
@@ -217,50 +306,26 @@ const { data } = await supabaseClient
 await supabaseClient.from('links').delete().eq('id', linkId);
 ```
 
----
+### Create Bucket
+```javascript
+await supabaseClient.from('buckets').insert({
+  user_id: currentUser.id,
+  name: bucketName
+});
+```
 
-## Implementation Phases
-
-### Phase 1: Project Setup
-- [ ] Create `.gitignore`
-- [ ] Create `supabase-config.example.js` template
-- [ ] Create `index.html` with basic structure
-- [ ] Add Supabase JS library via CDN
-
-### Phase 2: Supabase Setup (User)
-- [ ] Create Supabase project
-- [ ] Run SQL to create table + policies
-- [ ] Get API credentials
-- [ ] Create `supabase-config.js`
-
-### Phase 3: Authentication
-- [ ] Login/signup form
-- [ ] Handle auth with Supabase
-- [ ] Session persistence
-- [ ] Logout functionality
-
-### Phase 4: Core Functionality
-- [ ] Add link form (URL input)
-- [ ] Fetch page metadata (title + og:image)
-- [ ] Save links to database
-- [ ] Display links with thumbnails
-- [ ] Delete links
-
-### Phase 5: Styling
-- [ ] Pocket-like card design
-- [ ] Responsive grid layout
-- [ ] Loading states
-- [ ] Empty state (no links yet)
-
-### Phase 6: Deploy
-- [ ] Push to GitHub
-- [ ] Enable GitHub Pages
-- [ ] Test live version
+### Assign Link to Bucket
+```javascript
+await supabaseClient.from('links')
+  .update({ bucket_id: bucketId })
+  .eq('id', linkId);
+```
 
 ---
 
 ## Verification Checklist
 
+### Core Functionality
 - [ ] Can signup with email/password
 - [ ] Can login with existing account
 - [ ] Session persists on page refresh
@@ -271,6 +336,18 @@ await supabaseClient.from('links').delete().eq('id', linkId);
 - [ ] Links display in list
 - [ ] Can delete links
 - [ ] Works on mobile browser
+
+### Buckets Feature
+- [ ] Can create bucket with unique name
+- [ ] Can rename bucket
+- [ ] Can delete bucket (links become uncategorized)
+- [ ] Can assign link to bucket via dropdown
+- [ ] Can remove link from bucket (set to "No bucket")
+- [ ] "All Links" filter shows all links
+- [ ] Bucket filter shows only bucket's links
+- [ ] New links appear uncategorized
+- [ ] Mobile filter dropdown works
+- [ ] save.html still works (uncategorized saves)
 
 ---
 
@@ -287,3 +364,4 @@ await supabaseClient.from('links').delete().eq('id', linkId);
 - Architecture similar to PicMachine project (same Supabase patterns)
 - Keep it minimal - personal tool, not enterprise software
 - Focus on reliability over features
+- Buckets feature added January 2026
