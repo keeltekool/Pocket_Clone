@@ -15,7 +15,13 @@
 
       <form id="auth-form">
         <input type="email" id="email" placeholder="Email" required>
-        <input type="password" id="password" placeholder="Password" required>
+        <div class="password-field">
+          <input type="password" id="password" placeholder="Password" required>
+          <label class="show-password">
+            <input type="checkbox" id="show-password-toggle">
+            <span>Show</span>
+          </label>
+        </div>
         <button type="submit" id="auth-btn">Login</button>
       </form>
       <p class="auth-toggle">

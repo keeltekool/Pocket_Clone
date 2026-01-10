@@ -170,6 +170,43 @@ body {
   color: var(--ink-faint);
 }
 
+.password-field {
+  position: relative;
+  width: 100%;
+}
+
+.password-field input {
+  width: 100%;
+  padding-right: 70px;
+}
+
+.show-password {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.show-password input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  accent-color: var(--terracotta);
+}
+
+.show-password:hover {
+  color: var(--ink);
+}
+
 #auth-form input:focus {
   border-color: var(--terracotta-soft);
   box-shadow: 0 0 0 4px var(--terracotta-glow);

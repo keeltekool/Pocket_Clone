@@ -326,5 +326,10 @@ authForm.addEventListener('submit', handleAuth);
 logoutBtn.addEventListener('click', handleLogout);
 addLinkForm.addEventListener('submit', addLink);
 
+// Show/hide password toggle
+document.getElementById('show-password-toggle').addEventListener('change', (e) => {
+  passwordInput.type = e.target.checked ? 'text' : 'password';
+});
+
 // Start app
 init();
