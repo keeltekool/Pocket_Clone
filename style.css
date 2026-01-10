@@ -377,6 +377,11 @@ header h1 {
 .main-content {
   flex: 1;
   min-width: 0;
+  overflow: visible;
+}
+
+#links-container {
+  overflow: visible;
 }
 
 
@@ -864,6 +869,7 @@ header h1 {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+  overflow: visible;
 }
 
 
@@ -1056,27 +1062,21 @@ header h1 {
 
 .bucket-dropdown-menu {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 4px);
   right: 0;
   min-width: 180px;
   background: var(--warm-white);
   border: 1px solid var(--cream-dark);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  z-index: 9999;
-  margin-top: 4px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  z-index: 99999;
   max-height: 280px;
   overflow-y: auto;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-8px);
-  transition: all 0.2s var(--ease-out);
+  display: none;
 }
 
 .bucket-dropdown-menu.open {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
+  display: block;
 }
 
 .bucket-option {
