@@ -299,7 +299,8 @@ function getBucketLinkCount(bucketId) {
   if (bucketId === null) {
     return links.length;
   }
-  return links.filter(l => l.bucket_id === bucketId).length;
+  // Compare as strings to handle UUID comparison correctly
+  return links.filter(l => String(l.bucket_id) === String(bucketId)).length;
 }
 
 function renderBucketSidebar() {
@@ -315,7 +316,7 @@ function renderBucketSidebar() {
     <div class="bucket-divider"></div>
     <div class="bucket-header">BUCKETS</div>
     ${buckets.map(bucket => `
-      <div class="bucket-item ${currentBucketId === bucket.id ? 'active' : ''}" data-bucket-id="${bucket.id}">
+      <div class="bucket-item ${String(currentBucketId) === String(bucket.id) ? 'active' : ''}" data-bucket-id="${bucket.id}">
         <span class="bucket-name" onclick="filterByBucket('${bucket.id}')">${escapeHtml(bucket.name)}</span>
         <span class="bucket-count">${getBucketLinkCount(bucket.id)}</span>
         <button class="bucket-menu-btn" onclick="event.stopPropagation(); showBucketContextMenu(event, '${bucket.id}')" title="Options">
@@ -364,7 +365,7 @@ function renderMobileBucketList() {
       <span class="bucket-count">${allLinksCount}</span>
     </div>
     ${buckets.map(bucket => `
-      <div class="mobile-bucket-item ${currentBucketId === bucket.id ? 'active' : ''}" onclick="filterByBucket('${bucket.id}')">
+      <div class="mobile-bucket-item ${String(currentBucketId) === String(bucket.id) ? 'active' : ''}" onclick="filterByBucket('${bucket.id}')">
         <span>${escapeHtml(bucket.name)}</span>
         <span class="bucket-count">${getBucketLinkCount(bucket.id)}</span>
       </div>
@@ -502,7 +503,7 @@ function createBucketDropdown(link) {
           No bucket
         </div>
         ${buckets.map(b => `
-          <div class="bucket-option ${b.id === link.bucket_id ? 'selected' : ''}" onclick="event.preventDefault(); event.stopPropagation(); assignLinkToBucket('${link.id}', '${b.id}')">
+          <div class="bucket-option ${String(b.id) === String(link.bucket_id) ? 'selected' : ''}" onclick="event.preventDefault(); event.stopPropagation(); assignLinkToBucket('${link.id}', '${b.id}')">
             ${escapeHtml(b.name)}
           </div>
         `).join('')}
@@ -661,7 +662,8 @@ async function loadLinks() {
     // Now filter for display
     let displayLinks = links;
     if (currentBucketId !== null) {
-      displayLinks = links.filter(l => l.bucket_id === currentBucketId);
+      // Compare as strings to handle UUID comparison correctly
+      displayLinks = links.filter(l => String(l.bucket_id) === String(currentBucketId));
     }
 
     if (displayLinks.length === 0) {
@@ -720,7 +722,7 @@ async function addLink(e) {
         title: title,
         image_url: ogImage,
         domain: domain,
-        bucket_id: null // New links always uncategorized
+        bucket_id: null // New links start uncategorized, AI will categorize
       })
       .select()
       .single();
@@ -739,6 +741,9 @@ async function addLink(e) {
     urlInput.value = '';
     renderBucketSidebar(); // Update counts
 
+    // Call AI to auto-categorize the link (async, don't wait)
+    categorizeWithAI(data.id, currentUser.id, title, domain, url);
+
   } catch (err) {
     console.error('Failed to add link:', err);
     alert('Failed to save link. Please try again.');
@@ -748,6 +753,53 @@ async function addLink(e) {
   urlInput.disabled = false;
   document.getElementById('add-btn').disabled = false;
   urlInput.focus();
+}
+
+// ============================================
+// AI AUTO-CATEGORIZATION
+// ============================================
+
+async function categorizeWithAI(linkId, userId, title, domain, url) {
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/categorize-link`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ linkId, userId, title, domain, url }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (result.success && result.bucketId) {
+      console.log(`AI categorized link into: ${result.bucketName}`);
+
+      // Update local state
+      const link = links.find(l => l.id === linkId);
+      if (link) {
+        link.bucket_id = result.bucketId;
+      }
+
+      // Refresh UI to show the categorization
+      renderBucketSidebar();
+
+      // Update the card's dropdown if visible
+      const card = document.querySelector(`[data-id="${linkId}"]`);
+      if (card) {
+        const dropdownBtn = card.querySelector('.bucket-dropdown-text');
+        if (dropdownBtn) {
+          dropdownBtn.textContent = result.bucketName;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('AI categorization failed:', err);
+    // Silent fail - link is saved, just not auto-categorized
+  }
 }
 
 async function deleteLink(id, cardElement) {
