@@ -245,12 +245,15 @@ async function deleteBucket(bucketId) {
 }
 
 async function assignLinkToBucket(linkId, bucketId) {
+  console.log('Assigning link to bucket:', { linkId, bucketId });
   try {
-    const { error } = await supabaseClient
+    const { data, error } = await supabaseClient
       .from('links')
       .update({ bucket_id: bucketId })
-      .eq('id', linkId);
+      .eq('id', linkId)
+      .select();
 
+    console.log('Update result:', { data, error });
     if (error) throw error;
 
     // Update local state
@@ -658,12 +661,14 @@ async function loadLinks() {
     if (allError) throw allError;
 
     links = allLinks || [];
+    console.log('Loaded links from DB:', links.map(l => ({ id: l.id, title: l.title, bucket_id: l.bucket_id })));
 
     // Now filter for display
     let displayLinks = links;
     if (currentBucketId !== null) {
       // Compare as strings to handle UUID comparison correctly
       displayLinks = links.filter(l => String(l.bucket_id) === String(currentBucketId));
+      console.log('Filtered for bucket:', currentBucketId, 'Found:', displayLinks.length);
     }
 
     if (displayLinks.length === 0) {
