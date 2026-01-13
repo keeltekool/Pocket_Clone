@@ -28,24 +28,22 @@ let currentBucketId = null; // null = "All Links"
 let links = []; // Store links for count calculations
 
 // Initialize app
+let initialLoadDone = false;
+
 async function init() {
-  // Check for existing session
-  const { data: { session } } = await supabaseClient.auth.getSession();
-
-  if (session) {
-    currentUser = session.user;
-    showMainApp();
-    await Promise.all([loadBuckets(), loadLinks()]);
-  } else {
-    showAuth();
-  }
-
   // Listen for auth changes
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    // Skip if this is the initial event and we already loaded
+    if (event === 'INITIAL_SESSION' && initialLoadDone) {
+      return;
+    }
+
     if (session) {
       currentUser = session.user;
       showMainApp();
       await Promise.all([loadBuckets(), loadLinks()]);
+      initialLoadDone = true;
+      checkRLSPolicies(); // Diagnostic check
     } else {
       currentUser = null;
       buckets = [];
@@ -54,6 +52,19 @@ async function init() {
       showAuth();
     }
   });
+
+  // Check for existing session
+  const { data: { session } } = await supabaseClient.auth.getSession();
+
+  if (session && !initialLoadDone) {
+    currentUser = session.user;
+    showMainApp();
+    await Promise.all([loadBuckets(), loadLinks()]);
+    initialLoadDone = true;
+    checkRLSPolicies(); // Diagnostic check
+  } else if (!session) {
+    showAuth();
+  }
 }
 
 // UI State Functions
@@ -247,14 +258,27 @@ async function deleteBucket(bucketId) {
 async function assignLinkToBucket(linkId, bucketId) {
   console.log('Assigning link to bucket:', { linkId, bucketId });
   try {
+    // Also filter by user_id to ensure RLS policy works
     const { data, error } = await supabaseClient
       .from('links')
       .update({ bucket_id: bucketId })
       .eq('id', linkId)
+      .eq('user_id', currentUser.id)
       .select();
 
     console.log('Update result:', { data, error });
-    if (error) throw error;
+
+    if (error) {
+      console.error('Supabase update error:', error);
+      throw error;
+    }
+
+    // Check if update actually happened
+    if (!data || data.length === 0) {
+      console.error('Update returned no data - RLS policy may be blocking the update');
+      alert('Failed to update link - permission denied');
+      return false;
+    }
 
     // Update local state
     const link = links.find(l => l.id === linkId);
@@ -879,6 +903,45 @@ document.addEventListener('keydown', (e) => {
     closeMobileBucketSheet();
   }
 });
+
+// Diagnostic: Check RLS policies on page load
+async function checkRLSPolicies() {
+  if (!currentUser) return;
+
+  try {
+    // Test if we can update a link (dry run check)
+    const { data: testLinks } = await supabaseClient
+      .from('links')
+      .select('id, bucket_id')
+      .eq('user_id', currentUser.id)
+      .limit(1);
+
+    if (testLinks && testLinks.length > 0) {
+      const testLink = testLinks[0];
+      // Try a no-op update to check permissions
+      const { data, error } = await supabaseClient
+        .from('links')
+        .update({ bucket_id: testLink.bucket_id }) // Same value
+        .eq('id', testLink.id)
+        .eq('user_id', currentUser.id)
+        .select();
+
+      if (error) {
+        console.error('RLS UPDATE policy issue detected:', error);
+        console.warn('You need to add an UPDATE policy in Supabase SQL Editor:');
+        console.warn('CREATE POLICY "Users can update their own links" ON links FOR UPDATE USING (auth.uid() = user_id);');
+      } else if (!data || data.length === 0) {
+        console.error('UPDATE returned no rows - RLS policy is blocking updates');
+        console.warn('Add this policy in Supabase SQL Editor:');
+        console.warn('CREATE POLICY "Users can update their own links" ON links FOR UPDATE USING (auth.uid() = user_id);');
+      } else {
+        console.log('RLS UPDATE policy is working correctly');
+      }
+    }
+  } catch (err) {
+    console.error('RLS check failed:', err);
+  }
+}
 
 // Start app
 init();
