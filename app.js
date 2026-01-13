@@ -28,23 +28,26 @@ let currentBucketId = null; // null = "All Links"
 let links = []; // Store links for count calculations
 
 // Initialize app
-let initialLoadDone = false;
-
 async function init() {
-  // Listen for auth changes
-  supabaseClient.auth.onAuthStateChange(async (event, session) => {
-    // Skip if this is the initial event and we already loaded
-    if (event === 'INITIAL_SESSION' && initialLoadDone) {
-      return;
-    }
+  // Check for existing session first
+  const { data: { session } } = await supabaseClient.auth.getSession();
 
-    if (session) {
+  if (session) {
+    currentUser = session.user;
+    showMainApp();
+    await Promise.all([loadBuckets(), loadLinks()]);
+    checkRLSPolicies();
+  } else {
+    showAuth();
+  }
+
+  // Listen for auth changes (login/logout only, not initial)
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN') {
       currentUser = session.user;
       showMainApp();
       await Promise.all([loadBuckets(), loadLinks()]);
-      initialLoadDone = true;
-      checkRLSPolicies(); // Diagnostic check
-    } else {
+    } else if (event === 'SIGNED_OUT') {
       currentUser = null;
       buckets = [];
       links = [];
@@ -52,19 +55,6 @@ async function init() {
       showAuth();
     }
   });
-
-  // Check for existing session
-  const { data: { session } } = await supabaseClient.auth.getSession();
-
-  if (session && !initialLoadDone) {
-    currentUser = session.user;
-    showMainApp();
-    await Promise.all([loadBuckets(), loadLinks()]);
-    initialLoadDone = true;
-    checkRLSPolicies(); // Diagnostic check
-  } else if (!session) {
-    showAuth();
-  }
 }
 
 // UI State Functions
