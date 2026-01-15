@@ -882,13 +882,15 @@ document.addEventListener('keydown', (e) => {
 
 // Handle bfcache restoration (back/forward navigation)
 window.addEventListener('pageshow', (event) => {
-  if (event.persisted && currentUser) {
-    // Page was restored from bfcache, reload data after brief delay
-    // Delay helps Supabase client reconnect properly
-    console.log('Page restored from bfcache, reloading data...');
-    setTimeout(() => {
+  if (event.persisted) {
+    // Page was restored from bfcache - recreate Supabase client
+    // Old client has stale connections that cause AbortError
+    console.log('Page restored from bfcache, recreating client...');
+    recreateSupabaseClient();
+
+    if (currentUser) {
       Promise.all([loadBuckets(), loadLinks()]);
-    }, 100);
+    }
   }
 });
 
