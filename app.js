@@ -880,5 +880,25 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Handle bfcache restoration (back/forward navigation)
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    // Page was restored from bfcache, reload data
+    console.log('Page restored from bfcache, reloading data...');
+    if (currentUser) {
+      Promise.all([loadBuckets(), loadLinks()]);
+    }
+  }
+});
+
+// Handle visibility change (tab switching)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentUser && links.length === 0) {
+    // Tab became visible and links are empty, reload
+    console.log('Tab visible with empty links, reloading...');
+    Promise.all([loadBuckets(), loadLinks()]);
+  }
+});
+
 // Start app
 init();
