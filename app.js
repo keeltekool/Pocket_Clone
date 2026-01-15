@@ -26,6 +26,7 @@ let currentUser = null;
 let buckets = [];
 let currentBucketId = null; // null = "All Links"
 let links = []; // Store links for count calculations
+let isReloading = false; // Prevent multiple simultaneous reloads
 
 // Initialize app
 async function init() {
@@ -880,12 +881,20 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Handle bfcache restoration (back/forward navigation)
-window.addEventListener('pageshow', async (event) => {
-  if (event.persisted) {
-    // Page was restored from bfcache - recreate Supabase client
-    // Old client has stale connections that cause AbortError
-    console.log('Page restored from bfcache, recreating client...');
+// Reload data after bfcache restore with debouncing
+async function reloadAfterRestore() {
+  if (isReloading) {
+    console.log('Already reloading, skipping...');
+    return;
+  }
+
+  isReloading = true;
+
+  try {
+    // Small delay to let old abort signals settle
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Recreate client to get fresh connections
     recreateSupabaseClient();
 
     // Re-check session with fresh client
@@ -896,35 +905,43 @@ window.addEventListener('pageshow', async (event) => {
       console.log('Session restored, reloading data...');
       await Promise.all([loadBuckets(), loadLinks()]);
     } else {
-      console.log('No session after bfcache restore');
+      console.log('No session after restore');
       currentUser = null;
       showAuth();
     }
+  } catch (err) {
+    console.error('Error during reload:', err);
+  } finally {
+    isReloading = false;
+  }
+}
+
+// Handle bfcache restoration (back/forward navigation)
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    console.log('Page restored from bfcache');
+    reloadAfterRestore();
   }
 });
 
 // Handle visibility change (tab switching, coming back to page)
-document.addEventListener('visibilitychange', async () => {
+document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && currentUser) {
-    // Check if linksGrid is empty but we should have links
     const gridEmpty = linksGrid.children.length === 0;
     const loadingVisible = linksLoading.style.display === 'block';
 
     if (gridEmpty || loadingVisible) {
-      console.log('Tab visible with empty/loading grid, reloading...');
-      // Recreate client in case connection is stale
-      recreateSupabaseClient();
-      await Promise.all([loadBuckets(), loadLinks()]);
+      console.log('Tab visible with empty/loading grid');
+      reloadAfterRestore();
     }
   }
 });
 
 // Fallback: Also check on focus
-window.addEventListener('focus', async () => {
+window.addEventListener('focus', () => {
   if (currentUser && linksGrid.children.length === 0 && mainSection.style.display !== 'none') {
-    console.log('Window focused with empty grid, reloading...');
-    recreateSupabaseClient();
-    await Promise.all([loadBuckets(), loadLinks()]);
+    console.log('Window focused with empty grid');
+    reloadAfterRestore();
   }
 });
 
