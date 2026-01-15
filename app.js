@@ -881,21 +881,30 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Handle bfcache restoration (back/forward navigation)
-window.addEventListener('pageshow', (event) => {
+window.addEventListener('pageshow', async (event) => {
   if (event.persisted) {
     // Page was restored from bfcache - recreate Supabase client
     // Old client has stale connections that cause AbortError
     console.log('Page restored from bfcache, recreating client...');
     recreateSupabaseClient();
 
-    if (currentUser) {
-      Promise.all([loadBuckets(), loadLinks()]);
+    // Re-check session with fresh client
+    const { data: { session } } = await supabaseClient.auth.getSession();
+
+    if (session) {
+      currentUser = session.user;
+      console.log('Session restored, reloading data...');
+      await Promise.all([loadBuckets(), loadLinks()]);
+    } else {
+      console.log('No session after bfcache restore');
+      currentUser = null;
+      showAuth();
     }
   }
 });
 
 // Handle visibility change (tab switching, coming back to page)
-document.addEventListener('visibilitychange', () => {
+document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && currentUser) {
     // Check if linksGrid is empty but we should have links
     const gridEmpty = linksGrid.children.length === 0;
@@ -903,16 +912,19 @@ document.addEventListener('visibilitychange', () => {
 
     if (gridEmpty || loadingVisible) {
       console.log('Tab visible with empty/loading grid, reloading...');
-      Promise.all([loadBuckets(), loadLinks()]);
+      // Recreate client in case connection is stale
+      recreateSupabaseClient();
+      await Promise.all([loadBuckets(), loadLinks()]);
     }
   }
 });
 
 // Fallback: Also check on focus
-window.addEventListener('focus', () => {
+window.addEventListener('focus', async () => {
   if (currentUser && linksGrid.children.length === 0 && mainSection.style.display !== 'none') {
     console.log('Window focused with empty grid, reloading...');
-    Promise.all([loadBuckets(), loadLinks()]);
+    recreateSupabaseClient();
+    await Promise.all([loadBuckets(), loadLinks()]);
   }
 });
 
