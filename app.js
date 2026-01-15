@@ -882,20 +882,31 @@ document.addEventListener('keydown', (e) => {
 
 // Handle bfcache restoration (back/forward navigation)
 window.addEventListener('pageshow', (event) => {
-  if (event.persisted) {
+  if (event.persisted && currentUser) {
     // Page was restored from bfcache, reload data
     console.log('Page restored from bfcache, reloading data...');
-    if (currentUser) {
+    Promise.all([loadBuckets(), loadLinks()]);
+  }
+});
+
+// Handle visibility change (tab switching, coming back to page)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentUser) {
+    // Check if linksGrid is empty but we should have links
+    const gridEmpty = linksGrid.children.length === 0;
+    const loadingVisible = linksLoading.style.display === 'block';
+
+    if (gridEmpty || loadingVisible) {
+      console.log('Tab visible with empty/loading grid, reloading...');
       Promise.all([loadBuckets(), loadLinks()]);
     }
   }
 });
 
-// Handle visibility change (tab switching)
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && currentUser && links.length === 0) {
-    // Tab became visible and links are empty, reload
-    console.log('Tab visible with empty links, reloading...');
+// Fallback: Also check on focus
+window.addEventListener('focus', () => {
+  if (currentUser && linksGrid.children.length === 0 && mainSection.style.display !== 'none') {
+    console.log('Window focused with empty grid, reloading...');
     Promise.all([loadBuckets(), loadLinks()]);
   }
 });
