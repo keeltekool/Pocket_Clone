@@ -1,13 +1,6 @@
 // DOM Elements
 const authSection = document.getElementById('auth-section');
 const mainSection = document.getElementById('main-section');
-const authForm = document.getElementById('auth-form');
-const emailInput = document.getElementById('email');
-const passwordInput = document.getElementById('password');
-const authBtn = document.getElementById('auth-btn');
-const toggleAuthLink = document.getElementById('toggle-auth');
-const authModeText = document.getElementById('auth-mode-text');
-const authError = document.getElementById('auth-error');
 const logoutBtn = document.getElementById('logout-btn');
 const addLinkForm = document.getElementById('add-link-form');
 const urlInput = document.getElementById('url-input');
@@ -21,38 +14,57 @@ const mobileFilterName = document.getElementById('mobile-filter-name');
 const mobileBucketSheet = document.getElementById('mobile-bucket-sheet');
 
 // State
-let isLoginMode = true;
 let currentUser = null;
 let buckets = [];
 let currentBucketId = null; // null = "All Links"
 let links = []; // Store links for count calculations
 let isReloading = false; // Prevent multiple simultaneous reloads
 
-// Initialize app
-async function init() {
-  // Check for existing session
-  const { data: { session } } = await supabaseClient.auth.getSession();
+// ============================================
+// CLERK AUTH
+// ============================================
 
-  if (session) {
-    currentUser = session.user;
+async function getAuthHeaders() {
+  const token = await window.Clerk.session?.getToken();
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+async function initClerk() {
+  const clerk = window.Clerk;
+  await clerk.load();
+
+  if (clerk.user) {
+    currentUser = clerk.user;
     showMainApp();
     await Promise.all([loadBuckets(), loadLinks()]);
+    // Mount Clerk user button
+    const userBtnEl = document.getElementById('clerk-user-btn');
+    if (userBtnEl) clerk.mountUserButton(userBtnEl);
   } else {
     showAuth();
+    clerk.mountSignIn(document.getElementById('clerk-sign-in'));
   }
 
   // Listen for auth changes
-  supabaseClient.auth.onAuthStateChange(async (event, session) => {
-    if (session) {
-      currentUser = session.user;
+  clerk.addListener(async ({ user }) => {
+    if (user) {
+      currentUser = user;
       showMainApp();
       await Promise.all([loadBuckets(), loadLinks()]);
+      const userBtnEl = document.getElementById('clerk-user-btn');
+      if (userBtnEl && !userBtnEl.hasChildNodes()) {
+        clerk.mountUserButton(userBtnEl);
+      }
     } else {
       currentUser = null;
       buckets = [];
       links = [];
       currentBucketId = null;
       showAuth();
+      clerk.mountSignIn(document.getElementById('clerk-sign-in'));
     }
   });
 }
@@ -68,66 +80,8 @@ function showMainApp() {
   mainSection.style.display = 'block';
 }
 
-function showError(message) {
-  authError.textContent = message;
-  authError.style.display = 'block';
-}
-
-function clearError() {
-  authError.textContent = '';
-  authError.style.display = 'none';
-}
-
-// Auth Functions
-function toggleAuthMode() {
-  isLoginMode = !isLoginMode;
-  if (isLoginMode) {
-    authBtn.textContent = 'Login';
-    authModeText.textContent = "Don't have an account?";
-    toggleAuthLink.textContent = 'Sign up';
-  } else {
-    authBtn.textContent = 'Sign up';
-    authModeText.textContent = 'Already have an account?';
-    toggleAuthLink.textContent = 'Login';
-  }
-  clearError();
-}
-
-async function handleAuth(e) {
-  e.preventDefault();
-  clearError();
-
-  const email = emailInput.value.trim();
-  const password = passwordInput.value;
-
-  authBtn.disabled = true;
-  authBtn.textContent = isLoginMode ? 'Logging in...' : 'Signing up...';
-
-  try {
-    let result;
-    if (isLoginMode) {
-      result = await supabaseClient.auth.signInWithPassword({ email, password });
-    } else {
-      result = await supabaseClient.auth.signUp({ email, password });
-    }
-
-    if (result.error) {
-      showError(result.error.message);
-    } else if (!isLoginMode && result.data?.user && !result.data?.session) {
-      // Signup succeeded but email confirmation required
-      showError('Check your email to confirm your account!');
-    }
-  } catch (err) {
-    console.error('Auth error:', err);
-    showError(err.message || 'An error occurred. Please try again.');
-  }
-
-  authBtn.disabled = false;
-  authBtn.textContent = isLoginMode ? 'Login' : 'Sign up';
-}
-
 async function handleLogout() {
-  await supabaseClient.auth.signOut();
+  await window.Clerk.signOut();
   linksGrid.innerHTML = '';
   buckets = [];
   links = [];
@@ -140,14 +94,14 @@ async function handleLogout() {
 
 async function loadBuckets() {
   try {
-    const { data, error } = await supabaseClient
-      .from('buckets')
-      .select('*')
-      .order('name');
+    const response = await fetch('/api/buckets', {
+      headers: await getAuthHeaders(),
+    });
+    const data = await response.json();
 
-    if (error) throw error;
+    if (!response.ok) throw new Error(data.error);
 
-    buckets = data || [];
+    buckets = data.buckets || [];
     renderBucketSidebar();
   } catch (err) {
     console.error('Failed to load buckets:', err);
@@ -159,25 +113,22 @@ async function createBucket(name) {
   if (!trimmedName) return null;
 
   try {
-    const { data, error } = await supabaseClient
-      .from('buckets')
-      .insert({ user_id: currentUser.id, name: trimmedName })
-      .select()
-      .single();
+    const response = await fetch('/api/buckets', {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ name: trimmedName }),
+    });
+    const data = await response.json();
 
-    if (error) {
-      if (error.code === '23505') {
-        alert('A bucket with this name already exists');
-      } else {
-        alert('Failed to create bucket');
-      }
+    if (!response.ok) {
+      alert(data.error || 'Failed to create bucket');
       return null;
     }
 
-    buckets.push(data);
+    buckets.push(data.bucket);
     buckets.sort((a, b) => a.name.localeCompare(b.name));
     renderBucketSidebar();
-    return data;
+    return data.bucket;
   } catch (err) {
     console.error('Failed to create bucket:', err);
     return null;
@@ -189,17 +140,15 @@ async function renameBucket(bucketId, newName) {
   if (!trimmedName) return false;
 
   try {
-    const { error } = await supabaseClient
-      .from('buckets')
-      .update({ name: trimmedName })
-      .eq('id', bucketId);
+    const response = await fetch(`/api/buckets/${bucketId}`, {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ name: trimmedName }),
+    });
+    const data = await response.json();
 
-    if (error) {
-      if (error.code === '23505') {
-        alert('A bucket with this name already exists');
-      } else {
-        alert('Failed to rename bucket');
-      }
+    if (!response.ok) {
+      alert(data.error || 'Failed to rename bucket');
       return false;
     }
 
@@ -223,12 +172,12 @@ async function deleteBucket(bucketId) {
   }
 
   try {
-    const { error } = await supabaseClient
-      .from('buckets')
-      .delete()
-      .eq('id', bucketId);
+    const response = await fetch(`/api/buckets/${bucketId}`, {
+      method: 'DELETE',
+      headers: await getAuthHeaders(),
+    });
 
-    if (error) throw error;
+    if (!response.ok) throw new Error('Failed to delete');
 
     buckets = buckets.filter(b => b.id !== bucketId);
 
@@ -246,16 +195,14 @@ async function deleteBucket(bucketId) {
 }
 
 async function assignLinkToBucket(linkId, bucketId) {
-  console.log('Assigning link to bucket:', { linkId, bucketId });
   try {
-    const { data, error } = await supabaseClient
-      .from('links')
-      .update({ bucket_id: bucketId })
-      .eq('id', linkId)
-      .select();
+    const response = await fetch(`/api/links/${linkId}`, {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ bucketId }),
+    });
 
-    console.log('Update result:', { data, error });
-    if (error) throw error;
+    if (!response.ok) throw new Error('Failed to update');
 
     // Update local state
     const link = links.find(l => l.id === linkId);
@@ -271,7 +218,6 @@ async function assignLinkToBucket(linkId, bucketId) {
       if (card) {
         card.classList.add('deleting');
         setTimeout(() => card.remove(), 300);
-        // Check if grid is empty
         setTimeout(() => {
           if (linksGrid.children.length === 0) {
             emptyState.style.display = 'block';
@@ -280,9 +226,7 @@ async function assignLinkToBucket(linkId, bucketId) {
       }
     }
 
-    // Close any open dropdown
     closeAllDropdowns();
-
     return true;
   } catch (err) {
     console.error('Failed to assign link to bucket:', err);
@@ -303,7 +247,6 @@ function getBucketLinkCount(bucketId) {
   if (bucketId === null) {
     return links.length;
   }
-  // Compare as strings to handle UUID comparison correctly
   return links.filter(l => String(l.bucket_id) === String(bucketId)).length;
 }
 
@@ -353,7 +296,6 @@ function renderBucketSidebar() {
     </div>
   `;
 
-  // Also update mobile bucket list if it exists
   renderMobileBucketList();
 }
 
@@ -431,7 +373,6 @@ function showBucketContextMenu(event, bucketId) {
   menu.style.left = `${event.clientX}px`;
   menu.style.top = `${event.clientY}px`;
 
-  // Ensure menu stays in viewport
   const rect = menu.getBoundingClientRect();
   if (rect.right > window.innerWidth) {
     menu.style.left = `${window.innerWidth - rect.width - 10}px`;
@@ -526,12 +467,10 @@ function toggleBucketDropdown(linkId) {
   const isOpen = menu.classList.contains('open');
   const card = menu.closest('.link-card');
 
-  // Close all other dropdowns first
   closeAllDropdowns();
 
   if (!isOpen) {
     menu.classList.add('open');
-    // Raise this card above others
     if (card) card.style.zIndex = '1000';
   }
 }
@@ -539,7 +478,6 @@ function toggleBucketDropdown(linkId) {
 function closeAllDropdowns() {
   document.querySelectorAll('.bucket-dropdown-menu.open').forEach(menu => {
     menu.classList.remove('open');
-    // Reset z-index on parent card
     const card = menu.closest('.link-card');
     if (card) card.style.zIndex = '';
   });
@@ -551,7 +489,6 @@ async function createBucketFromDropdown(linkId) {
     const bucket = await createBucket(name);
     if (bucket) {
       await assignLinkToBucket(linkId, bucket.id);
-      // Refresh the card's dropdown
       loadLinks();
     }
   }
@@ -652,24 +589,19 @@ async function loadLinks() {
   linksGrid.innerHTML = '';
 
   try {
-    // First, load ALL links for count calculations
-    const { data: allLinks, error: allError } = await supabaseClient
-      .from('links')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false });
+    const response = await fetch('/api/links', {
+      headers: await getAuthHeaders(),
+    });
+    const data = await response.json();
 
-    if (allError) throw allError;
+    if (!response.ok) throw new Error(data.error);
 
-    links = allLinks || [];
-    console.log('Loaded links from DB:', links.map(l => ({ id: l.id, title: l.title, bucket_id: l.bucket_id })));
+    links = data.links || [];
 
-    // Now filter for display
+    // Filter for display
     let displayLinks = links;
     if (currentBucketId !== null) {
-      // Compare as strings to handle UUID comparison correctly
       displayLinks = links.filter(l => String(l.bucket_id) === String(currentBucketId));
-      console.log('Filtered for bucket:', currentBucketId, 'Found:', displayLinks.length);
     }
 
     if (displayLinks.length === 0) {
@@ -687,7 +619,6 @@ async function loadLinks() {
       });
     }
 
-    // Update sidebar counts
     renderBucketSidebar();
     updateMobileFilterName();
 
@@ -704,7 +635,6 @@ async function addLink(e) {
   const url = urlInput.value.trim();
   if (!url) return;
 
-  // Basic URL validation
   try {
     new URL(url);
   } catch {
@@ -720,35 +650,32 @@ async function addLink(e) {
     const domain = extractDomain(url);
     const { title, ogImage } = await fetchMetadata(url);
 
-    const { data, error } = await supabaseClient
-      .from('links')
-      .insert({
-        user_id: currentUser.id,
+    const response = await fetch('/api/links', {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({
         url: url,
         title: title,
-        image_url: ogImage,
+        imageUrl: ogImage,
         domain: domain,
-        bucket_id: null // New links start uncategorized, AI will categorize
-      })
-      .select()
-      .single();
+      }),
+    });
+    const data = await response.json();
 
-    if (error) throw error;
+    if (!response.ok) throw new Error(data.error);
 
-    // Add to local links array
-    links.unshift(data);
+    links.unshift(data.link);
 
-    // Add new card to top of grid only if viewing "All Links"
     if (currentBucketId === null) {
       emptyState.style.display = 'none';
-      linksGrid.insertBefore(createLinkCard(data), linksGrid.firstChild);
+      linksGrid.insertBefore(createLinkCard(data.link), linksGrid.firstChild);
     }
 
     urlInput.value = '';
-    renderBucketSidebar(); // Update counts
+    renderBucketSidebar();
 
-    // Call AI to auto-categorize the link (async, don't wait)
-    categorizeWithAI(data.id, currentUser.id, title, domain, url);
+    // Call AI to auto-categorize (async, don't wait)
+    categorizeWithAI(data.link.id, title, domain, url);
 
   } catch (err) {
     console.error('Failed to add link:', err);
@@ -765,35 +692,31 @@ async function addLink(e) {
 // AI AUTO-CATEGORIZATION
 // ============================================
 
-async function categorizeWithAI(linkId, userId, title, domain, url) {
+async function categorizeWithAI(linkId, title, domain, url) {
   try {
-    const response = await fetch(
-      `${SUPABASE_URL}/functions/v1/categorize-link`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ linkId, userId, title, domain, url }),
-      }
-    );
+    const response = await fetch('/api/categorize', {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ linkId, title, domain, url }),
+    });
 
     const result = await response.json();
 
     if (result.success && result.bucketId) {
       console.log(`AI categorized link into: ${result.bucketName}`);
 
-      // Update local state
       const link = links.find(l => l.id === linkId);
       if (link) {
         link.bucket_id = result.bucketId;
       }
 
-      // Refresh UI to show the categorization
+      // Check if this is a new bucket we don't have locally
+      if (!buckets.find(b => b.id === result.bucketId)) {
+        await loadBuckets();
+      }
+
       renderBucketSidebar();
 
-      // Update the card's dropdown if visible
       const card = document.querySelector(`[data-id="${linkId}"]`);
       if (card) {
         const dropdownBtn = card.querySelector('.bucket-dropdown-text');
@@ -804,33 +727,28 @@ async function categorizeWithAI(linkId, userId, title, domain, url) {
     }
   } catch (err) {
     console.error('AI categorization failed:', err);
-    // Silent fail - link is saved, just not auto-categorized
   }
 }
 
 async function deleteLink(id, cardElement) {
-  // Immediate visual feedback
   cardElement.classList.add('deleting');
 
   try {
-    const { error } = await supabaseClient
-      .from('links')
-      .delete()
-      .eq('id', id);
+    const response = await fetch(`/api/links/${id}`, {
+      method: 'DELETE',
+      headers: await getAuthHeaders(),
+    });
 
-    if (error) throw error;
+    if (!response.ok) throw new Error('Failed to delete');
 
-    // Remove from local array
     links = links.filter(l => l.id !== id);
-
     cardElement.remove();
 
-    // Show empty state if no links left in current view
     if (linksGrid.children.length === 0) {
       emptyState.style.display = 'block';
     }
 
-    renderBucketSidebar(); // Update counts
+    renderBucketSidebar();
 
   } catch (err) {
     console.error('Failed to delete link:', err);
@@ -839,26 +757,17 @@ async function deleteLink(id, cardElement) {
   }
 }
 
-// Event Listeners
-toggleAuthLink.addEventListener('click', (e) => {
-  e.preventDefault();
-  toggleAuthMode();
-});
-authForm.addEventListener('submit', handleAuth);
+// ============================================
+// EVENT LISTENERS
+// ============================================
+
 logoutBtn.addEventListener('click', handleLogout);
 addLinkForm.addEventListener('submit', addLink);
 
-// Show/hide password toggle
-document.getElementById('show-password-toggle').addEventListener('change', (e) => {
-  passwordInput.type = e.target.checked ? 'text' : 'password';
-});
-
-// Mobile filter button
 if (mobileFilterBtn) {
   mobileFilterBtn.addEventListener('click', openMobileBucketSheet);
 }
 
-// Close dropdowns when clicking outside
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.bucket-dropdown')) {
     closeAllDropdowns();
@@ -868,7 +777,6 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Handle Enter key in new bucket input
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'new-bucket-input') {
     confirmNewBucket();
@@ -881,31 +789,18 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Reload data after bfcache restore with debouncing
+// Reload data after bfcache restore
 async function reloadAfterRestore() {
-  if (isReloading) {
-    console.log('Already reloading, skipping...');
-    return;
-  }
-
+  if (isReloading) return;
   isReloading = true;
 
   try {
-    // Small delay to let old abort signals settle
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Recreate client to get fresh connections
-    recreateSupabaseClient();
-
-    // Re-check session with fresh client
-    const { data: { session } } = await supabaseClient.auth.getSession();
-
-    if (session) {
-      currentUser = session.user;
-      console.log('Session restored, reloading data...');
+    if (window.Clerk?.user) {
+      currentUser = window.Clerk.user;
       await Promise.all([loadBuckets(), loadLinks()]);
     } else {
-      console.log('No session after restore');
       currentUser = null;
       showAuth();
     }
@@ -916,34 +811,43 @@ async function reloadAfterRestore() {
   }
 }
 
-// Handle bfcache restoration (back/forward navigation)
 window.addEventListener('pageshow', (event) => {
   if (event.persisted) {
-    console.log('Page restored from bfcache');
     reloadAfterRestore();
   }
 });
 
-// Handle visibility change (tab switching, coming back to page)
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && currentUser) {
     const gridEmpty = linksGrid.children.length === 0;
     const loadingVisible = linksLoading.style.display === 'block';
-
     if (gridEmpty || loadingVisible) {
-      console.log('Tab visible with empty/loading grid');
       reloadAfterRestore();
     }
   }
 });
 
-// Fallback: Also check on focus
 window.addEventListener('focus', () => {
   if (currentUser && linksGrid.children.length === 0 && mainSection.style.display !== 'none') {
-    console.log('Window focused with empty grid');
     reloadAfterRestore();
   }
 });
 
-// Start app
-init();
+// ============================================
+// INITIALIZE - Wait for Clerk
+// ============================================
+
+function waitForClerk() {
+  if (window.Clerk) {
+    initClerk();
+  } else {
+    const check = setInterval(() => {
+      if (window.Clerk) {
+        clearInterval(check);
+        initClerk();
+      }
+    }, 100);
+  }
+}
+
+window.addEventListener('load', waitForClerk);

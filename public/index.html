@@ -12,30 +12,18 @@
     <div id="auth-section" class="auth-container">
       <h1>Pocket Clone</h1>
       <p class="tagline">Save links for later</p>
-
-      <form id="auth-form">
-        <input type="email" id="email" placeholder="Email" required>
-        <div class="password-field">
-          <input type="password" id="password" placeholder="Password" required>
-          <label class="show-password">
-            <input type="checkbox" id="show-password-toggle">
-            <span>Show</span>
-          </label>
-        </div>
-        <button type="submit" id="auth-btn">Login</button>
-      </form>
-      <p class="auth-toggle">
-        <span id="auth-mode-text">Don't have an account?</span>
-        <a href="#" id="toggle-auth">Sign up</a>
-      </p>
-      <p id="auth-error" class="error"></p>
+      <!-- Clerk will mount its sign-in UI here -->
+      <div id="clerk-sign-in"></div>
     </div>
 
     <!-- Main App (shown when logged in) -->
     <div id="main-section" class="main-container" style="display: none;">
       <header>
         <h1>Pocket Clone</h1>
-        <button id="logout-btn">Logout</button>
+        <div class="header-actions">
+          <div id="clerk-user-btn"></div>
+          <button id="logout-btn">Logout</button>
+        </div>
       </header>
 
       <!-- App Layout with Sidebar -->
@@ -124,10 +112,14 @@
     </button>
   </div>
 
-  <!-- Supabase JS -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Config (user creates this) -->
-  <script src="supabase-config.js"></script>
+  <!-- Clerk JS SDK -->
+  <script
+    async
+    crossorigin="anonymous"
+    data-clerk-publishable-key="pk_test_YmV0dGVyLWZlcnJldC0xMy5jbGVyay5hY2NvdW50cy5kZXYk"
+    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+    type="text/javascript"
+  ></script>
   <!-- App Logic -->
   <script src="app.js"></script>
 </body>

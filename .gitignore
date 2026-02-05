@@ -1,10 +1,17 @@
-# IDE
-.vscode/
-.idea/
+node_modules/
+.env
+.env.local
+.vercel/
+dist/
+*.log
+
+# Drizzle
+drizzle/meta/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# IDE
+.vscode/
+.idea/

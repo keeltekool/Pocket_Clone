@@ -1,0 +1,21 @@
+{
+  "name": "pocket-clone",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@clerk/backend": "^1.0.0",
+    "@neondatabase/serverless": "^1.0.0",
+    "drizzle-orm": "^0.45.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "dotenv": "^16.0.0",
+    "drizzle-kit": "^0.31.0",
+    "typescript": "^5.0.0"
+  }
+}

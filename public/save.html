@@ -79,17 +79,15 @@
   </div>
 
   <script>
-    const SUPABASE_URL = 'https://dorecfpibaftmodozltd.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRvcmVjZnBpYmFmdG1vZG96bHRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwMzQ0MjEsImV4cCI6MjA4MzYxMDQyMX0.D34KYMz-_N8yXYe4qjRsGPEpJibM-B6tUpz4UNU0GRc';
-    const USER_ID = '3ec193bc-e934-4c4b-9366-ad49de5573d1';
-
     const icon = document.getElementById('icon');
     const message = document.getElementById('message');
     const urlDisplay = document.getElementById('url-display');
 
-    // Get URL from query parameter
+    // Get params from URL: url, key (API key), user (user ID)
     const params = new URLSearchParams(window.location.search);
     const url = params.get('url') || params.get('text');
+    const apiKey = params.get('key');
+    const userId = params.get('user');
 
     async function saveLink(linkUrl) {
       icon.innerHTML = '<div class="spinner"></div>';
@@ -119,25 +117,26 @@
           console.log('Metadata fetch failed, using URL as title');
         }
 
-        // Save to Supabase
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/links`, {
+        // Save via API
+        const response = await fetch('/api/save', {
           method: 'POST',
           headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
             'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
+            'X-API-Key': apiKey,
+            'X-User-Id': userId,
           },
           body: JSON.stringify({
-            user_id: USER_ID,
             url: linkUrl,
             title: title,
-            image_url: imageUrl,
-            domain: domain
+            imageUrl: imageUrl,
+            domain: domain,
           })
         });
 
-        if (!response.ok) throw new Error('Save failed');
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || 'Save failed');
+        }
 
         icon.textContent = '✓';
         icon.style.color = '#4CAF50';
@@ -147,11 +146,16 @@
         console.error(err);
         icon.textContent = '✕';
         icon.style.color = '#f44336';
-        message.textContent = 'Failed to save';
+        message.textContent = err.message || 'Failed to save';
       }
     }
 
-    if (url) {
+    if (!apiKey || !userId) {
+      icon.textContent = '🔑';
+      message.textContent = 'Missing credentials';
+      urlDisplay.textContent = 'URL must include key and user parameters';
+      urlDisplay.style.display = 'block';
+    } else if (url) {
       saveLink(url);
     } else {
       icon.textContent = '?';
