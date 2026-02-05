@@ -17,11 +17,16 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === "PUT") {
     try {
-      const { bucketId } = req.body;
+      const body = req.body;
+      const updateData: Record<string, any> = {};
+
+      if ("bucketId" in body) updateData.bucketId = body.bucketId || null;
+      if ("title" in body) updateData.title = body.title;
+      if ("imageUrl" in body) updateData.imageUrl = body.imageUrl;
 
       const [updated] = await db
         .update(links)
-        .set({ bucketId: bucketId || null })
+        .set(updateData)
         .where(and(eq(links.id, id), eq(links.userId, userId)))
         .returning();
 

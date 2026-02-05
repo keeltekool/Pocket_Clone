@@ -642,23 +642,14 @@ async function addLink(e) {
     return;
   }
 
-  addLoading.style.display = 'block';
-  urlInput.disabled = true;
-  document.getElementById('add-btn').disabled = true;
+  const domain = extractDomain(url);
 
+  // Save immediately with just URL + domain (no waiting for metadata)
   try {
-    const domain = extractDomain(url);
-    const { title, ogImage } = await fetchMetadata(url);
-
     const response = await fetch('/api/links', {
       method: 'POST',
       headers: await getAuthHeaders(),
-      body: JSON.stringify({
-        url: url,
-        title: title,
-        imageUrl: ogImage,
-        domain: domain,
-      }),
+      body: JSON.stringify({ url, title: url, domain }),
     });
     const data = await response.json();
 
@@ -674,18 +665,59 @@ async function addLink(e) {
     urlInput.value = '';
     renderBucketSidebar();
 
-    // Call AI to auto-categorize (async, don't wait)
-    categorizeWithAI(data.link.id, title, domain, url);
+    // Background: fetch metadata, update link, and AI-categorize
+    enrichLinkInBackground(data.link.id, url, domain);
 
   } catch (err) {
     console.error('Failed to add link:', err);
     alert('Failed to save link. Please try again.');
   }
+}
 
-  addLoading.style.display = 'none';
-  urlInput.disabled = false;
-  document.getElementById('add-btn').disabled = false;
-  urlInput.focus();
+async function enrichLinkInBackground(linkId, url, domain) {
+  try {
+    const { title, ogImage } = await fetchMetadata(url);
+    const displayTitle = (title && title !== url) ? title : null;
+
+    // Update in DB if we got better metadata
+    if (displayTitle || ogImage) {
+      await fetch(`/api/links/${linkId}`, {
+        method: 'PUT',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({
+          ...(displayTitle && { title: displayTitle }),
+          ...(ogImage && { imageUrl: ogImage }),
+        }),
+      });
+
+      // Update local state
+      const link = links.find(l => l.id === linkId);
+      if (link) {
+        if (displayTitle) link.title = displayTitle;
+        if (ogImage) link.imageUrl = ogImage;
+      }
+
+      // Update the card in DOM
+      const card = document.querySelector(`[data-id="${linkId}"]`);
+      if (card) {
+        if (displayTitle) {
+          const titleEl = card.querySelector('.card-title');
+          if (titleEl) titleEl.textContent = displayTitle;
+        }
+        if (ogImage) {
+          const imgEl = card.querySelector('.card-image img');
+          if (imgEl) imgEl.src = ogImage;
+        }
+      }
+    }
+
+    // AI categorize with the best title we have
+    categorizeWithAI(linkId, displayTitle || url, domain, url);
+  } catch (err) {
+    console.error('Background enrichment failed:', err);
+    // Still try AI categorization even if metadata fetch failed
+    categorizeWithAI(linkId, url, domain, url);
+  }
 }
 
 // ============================================
