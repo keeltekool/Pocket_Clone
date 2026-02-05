@@ -207,7 +207,7 @@ async function assignLinkToBucket(linkId, bucketId) {
     // Update local state
     const link = links.find(l => l.id === linkId);
     if (link) {
-      link.bucket_id = bucketId;
+      link.bucketId = bucketId;
     }
 
     renderBucketSidebar();
@@ -247,7 +247,7 @@ function getBucketLinkCount(bucketId) {
   if (bucketId === null) {
     return links.length;
   }
-  return links.filter(l => String(l.bucket_id) === String(bucketId)).length;
+  return links.filter(l => String(l.bucketId) === String(bucketId)).length;
 }
 
 function renderBucketSidebar() {
@@ -429,7 +429,7 @@ function closeMobileBucketSheet() {
 // ============================================
 
 function createBucketDropdown(link) {
-  const currentBucket = buckets.find(b => b.id === link.bucket_id);
+  const currentBucket = buckets.find(b => b.id === link.bucketId);
   const displayName = currentBucket ? currentBucket.name : 'No bucket';
 
   return `
@@ -444,11 +444,11 @@ function createBucketDropdown(link) {
         </svg>
       </button>
       <div class="bucket-dropdown-menu" id="bucket-menu-${link.id}">
-        <div class="bucket-option ${!link.bucket_id ? 'selected' : ''}" onclick="event.preventDefault(); event.stopPropagation(); assignLinkToBucket('${link.id}', null)">
+        <div class="bucket-option ${!link.bucketId ? 'selected' : ''}" onclick="event.preventDefault(); event.stopPropagation(); assignLinkToBucket('${link.id}', null)">
           No bucket
         </div>
         ${buckets.map(b => `
-          <div class="bucket-option ${String(b.id) === String(link.bucket_id) ? 'selected' : ''}" onclick="event.preventDefault(); event.stopPropagation(); assignLinkToBucket('${link.id}', '${b.id}')">
+          <div class="bucket-option ${String(b.id) === String(link.bucketId) ? 'selected' : ''}" onclick="event.preventDefault(); event.stopPropagation(); assignLinkToBucket('${link.id}', '${b.id}')">
             ${escapeHtml(b.name)}
           </div>
         `).join('')}
@@ -551,7 +551,7 @@ function createLinkCard(link) {
   card.className = 'link-card';
   card.dataset.id = link.id;
 
-  const imageUrl = link.image_url || getFallbackImage(link.domain);
+  const imageUrl = link.imageUrl || getFallbackImage(link.domain);
 
   card.innerHTML = `
     <a href="${link.url}" target="_blank" rel="noopener noreferrer" class="card-link">
@@ -562,7 +562,7 @@ function createLinkCard(link) {
         <h3 class="card-title">${escapeHtml(link.title || link.url)}</h3>
         <span class="card-domain">${escapeHtml(link.domain)}</span>
       </div>
-      <span class="card-date">${formatTimeAgo(link.created_at)}</span>
+      <span class="card-date">${formatTimeAgo(link.createdAt)}</span>
     </a>
     <div class="card-actions">
       ${createBucketDropdown(link)}
@@ -601,7 +601,7 @@ async function loadLinks() {
     // Filter for display
     let displayLinks = links;
     if (currentBucketId !== null) {
-      displayLinks = links.filter(l => String(l.bucket_id) === String(currentBucketId));
+      displayLinks = links.filter(l => String(l.bucketId) === String(currentBucketId));
     }
 
     if (displayLinks.length === 0) {
@@ -707,7 +707,7 @@ async function categorizeWithAI(linkId, title, domain, url) {
 
       const link = links.find(l => l.id === linkId);
       if (link) {
-        link.bucket_id = result.bucketId;
+        link.bucketId = result.bucketId;
       }
 
       // Check if this is a new bucket we don't have locally
