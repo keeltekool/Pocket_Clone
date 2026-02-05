@@ -3,7 +3,6 @@ import { links } from "../../lib/schema";
 import { getUserId, unauthorized, methodNotAllowed, badRequest } from "../../lib/auth";
 import { eq, desc } from "drizzle-orm";
 
-export const config = { runtime: "edge" };
 
 export default async function handler(req: Request) {
   if (req.method === "OPTIONS") {

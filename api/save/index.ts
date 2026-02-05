@@ -2,7 +2,6 @@ import { db } from "../../lib/db";
 import { links } from "../../lib/schema";
 import { methodNotAllowed, badRequest } from "../../lib/auth";
 
-export const config = { runtime: "edge" };
 
 export default async function handler(req: Request) {
   if (req.method === "OPTIONS") {
