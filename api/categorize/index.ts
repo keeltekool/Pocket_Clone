@@ -4,19 +4,19 @@ import { getUserId, unauthorized, methodNotAllowed, badRequest } from "../../lib
 import { eq, and } from "drizzle-orm";
 
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204 });
+    return res.status(204).end();
   }
 
-  if (req.method !== "POST") return methodNotAllowed();
+  if (req.method !== "POST") return methodNotAllowed(res);
 
   const userId = await getUserId(req);
-  if (!userId) return unauthorized();
+  if (!userId) return unauthorized(res);
 
   try {
-    const { linkId, title, domain, url } = await req.json();
-    if (!linkId) return badRequest("linkId is required");
+    const { linkId, title, domain, url } = req.body;
+    if (!linkId) return badRequest(res, "linkId is required");
 
     // Get user's existing buckets
     const userBuckets = await db
@@ -51,10 +51,7 @@ Examples:
     // Call Claude API
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     if (!anthropicKey) {
-      return Response.json(
-        { success: false, error: "ANTHROPIC_API_KEY not configured" },
-        { status: 500 }
-      );
+      return res.status(500).json({ success: false, error: "ANTHROPIC_API_KEY not configured" });
     }
 
     const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
@@ -136,7 +133,7 @@ Examples:
         .where(and(eq(links.id, linkId), eq(links.userId, userId)));
     }
 
-    return Response.json({
+    return res.status(200).json({
       success: true,
       bucketId,
       bucketName,
@@ -144,9 +141,6 @@ Examples:
     });
   } catch (error: any) {
     console.error("Categorization error:", error);
-    return Response.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return res.status(500).json({ success: false, error: error.message });
   }
 }

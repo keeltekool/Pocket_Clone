@@ -3,29 +3,26 @@ import { links } from "../../lib/schema";
 import { methodNotAllowed, badRequest } from "../../lib/auth";
 
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204 });
+    return res.status(204).end();
   }
 
-  if (req.method !== "POST") return methodNotAllowed();
+  if (req.method !== "POST") return methodNotAllowed(res);
 
   // Authenticate via API key (for iOS shortcut)
-  const apiKey = req.headers.get("X-API-Key");
-  const userId = req.headers.get("X-User-Id");
+  const apiKey = req.headers["x-api-key"];
+  const userId = req.headers["x-user-id"];
 
   if (!apiKey || apiKey !== process.env.SHORTCUT_API_KEY) {
-    return new Response(JSON.stringify({ error: "Invalid API key" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return res.status(401).json({ error: "Invalid API key" });
   }
 
-  if (!userId) return badRequest("X-User-Id header is required");
+  if (!userId) return badRequest(res, "X-User-Id header is required");
 
   try {
-    const { url, title, imageUrl, domain } = await req.json();
-    if (!url) return badRequest("URL is required");
+    const { url, title, imageUrl, domain } = req.body;
+    if (!url) return badRequest(res, "URL is required");
 
     const [newLink] = await db
       .insert(links)
@@ -39,9 +36,9 @@ export default async function handler(req: Request) {
       })
       .returning();
 
-    return Response.json({ success: true, link: newLink }, { status: 201 });
+    return res.status(201).json({ success: true, link: newLink });
   } catch (error) {
     console.error("Failed to save link:", error);
-    return Response.json({ error: "Failed to save link" }, { status: 500 });
+    return res.status(500).json({ error: "Failed to save link" });
   }
 }

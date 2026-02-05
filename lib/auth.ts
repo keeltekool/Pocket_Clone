@@ -1,7 +1,7 @@
 import { verifyToken } from "@clerk/backend";
 
-export async function getUserId(req: Request): Promise<string | null> {
-  const authHeader = req.headers.get("Authorization");
+export async function getUserId(req: any): Promise<string | null> {
+  const authHeader = req.headers.authorization || req.headers["Authorization"];
   if (!authHeader?.startsWith("Bearer ")) {
     return null;
   }
@@ -18,23 +18,14 @@ export async function getUserId(req: Request): Promise<string | null> {
   }
 }
 
-export function unauthorized() {
-  return new Response(JSON.stringify({ error: "Unauthorized" }), {
-    status: 401,
-    headers: { "Content-Type": "application/json" },
-  });
+export function unauthorized(res: any) {
+  return res.status(401).json({ error: "Unauthorized" });
 }
 
-export function methodNotAllowed() {
-  return new Response(JSON.stringify({ error: "Method not allowed" }), {
-    status: 405,
-    headers: { "Content-Type": "application/json" },
-  });
+export function methodNotAllowed(res: any) {
+  return res.status(405).json({ error: "Method not allowed" });
 }
 
-export function badRequest(message: string) {
-  return new Response(JSON.stringify({ error: message }), {
-    status: 400,
-    headers: { "Content-Type": "application/json" },
-  });
+export function badRequest(res: any, message: string) {
+  return res.status(400).json({ error: message });
 }

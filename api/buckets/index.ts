@@ -4,13 +4,13 @@ import { getUserId, unauthorized, methodNotAllowed, badRequest } from "../../lib
 import { eq, asc } from "drizzle-orm";
 
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204 });
+    return res.status(204).end();
   }
 
   const userId = await getUserId(req);
-  if (!userId) return unauthorized();
+  if (!userId) return unauthorized(res);
 
   if (req.method === "GET") {
     try {
@@ -20,33 +20,33 @@ export default async function handler(req: Request) {
         .where(eq(buckets.userId, userId))
         .orderBy(asc(buckets.name));
 
-      return Response.json({ buckets: data });
+      return res.status(200).json({ buckets: data });
     } catch (error) {
       console.error("Failed to load buckets:", error);
-      return Response.json({ error: "Failed to load buckets" }, { status: 500 });
+      return res.status(500).json({ error: "Failed to load buckets" });
     }
   }
 
   if (req.method === "POST") {
     try {
-      const { name } = await req.json();
+      const { name } = req.body;
       const trimmedName = name?.trim();
-      if (!trimmedName) return badRequest("Bucket name is required");
+      if (!trimmedName) return badRequest(res, "Bucket name is required");
 
       const [newBucket] = await db
         .insert(buckets)
         .values({ userId, name: trimmedName })
         .returning();
 
-      return Response.json({ bucket: newBucket }, { status: 201 });
+      return res.status(201).json({ bucket: newBucket });
     } catch (error: any) {
       if (error?.code === "23505") {
-        return Response.json({ error: "A bucket with this name already exists" }, { status: 409 });
+        return res.status(409).json({ error: "A bucket with this name already exists" });
       }
       console.error("Failed to create bucket:", error);
-      return Response.json({ error: "Failed to create bucket" }, { status: 500 });
+      return res.status(500).json({ error: "Failed to create bucket" });
     }
   }
 
-  return methodNotAllowed();
+  return methodNotAllowed(res);
 }

@@ -4,24 +4,20 @@ import { getUserId, unauthorized, methodNotAllowed, badRequest } from "../../lib
 import { eq, and } from "drizzle-orm";
 
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204 });
+    return res.status(204).end();
   }
 
   const userId = await getUserId(req);
-  if (!userId) return unauthorized();
+  if (!userId) return unauthorized(res);
 
-  const url = new URL(req.url);
-  const segments = url.pathname.split("/").filter(Boolean);
-  const id = segments[segments.length - 1];
-
-  if (!id) return badRequest("Link ID is required");
+  const id = req.query.id;
+  if (!id) return badRequest(res, "Link ID is required");
 
   if (req.method === "PUT") {
     try {
-      const body = await req.json();
-      const { bucketId } = body;
+      const { bucketId } = req.body;
 
       const [updated] = await db
         .update(links)
@@ -30,13 +26,13 @@ export default async function handler(req: Request) {
         .returning();
 
       if (!updated) {
-        return Response.json({ error: "Link not found" }, { status: 404 });
+        return res.status(404).json({ error: "Link not found" });
       }
 
-      return Response.json({ link: updated });
+      return res.status(200).json({ link: updated });
     } catch (error) {
       console.error("Failed to update link:", error);
-      return Response.json({ error: "Failed to update link" }, { status: 500 });
+      return res.status(500).json({ error: "Failed to update link" });
     }
   }
 
@@ -46,12 +42,12 @@ export default async function handler(req: Request) {
         .delete(links)
         .where(and(eq(links.id, id), eq(links.userId, userId)));
 
-      return Response.json({ success: true });
+      return res.status(200).json({ success: true });
     } catch (error) {
       console.error("Failed to delete link:", error);
-      return Response.json({ error: "Failed to delete link" }, { status: 500 });
+      return res.status(500).json({ error: "Failed to delete link" });
     }
   }
 
-  return methodNotAllowed();
+  return methodNotAllowed(res);
 }

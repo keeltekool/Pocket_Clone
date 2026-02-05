@@ -4,13 +4,13 @@ import { getUserId, unauthorized, methodNotAllowed, badRequest } from "../../lib
 import { eq, desc } from "drizzle-orm";
 
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204 });
+    return res.status(204).end();
   }
 
   const userId = await getUserId(req);
-  if (!userId) return unauthorized();
+  if (!userId) return unauthorized(res);
 
   if (req.method === "GET") {
     try {
@@ -20,17 +20,17 @@ export default async function handler(req: Request) {
         .where(eq(links.userId, userId))
         .orderBy(desc(links.createdAt));
 
-      return Response.json({ links: data });
+      return res.status(200).json({ links: data });
     } catch (error) {
       console.error("Failed to load links:", error);
-      return Response.json({ error: "Failed to load links" }, { status: 500 });
+      return res.status(500).json({ error: "Failed to load links" });
     }
   }
 
   if (req.method === "POST") {
     try {
-      const { url, title, imageUrl, domain } = await req.json();
-      if (!url) return badRequest("URL is required");
+      const { url, title, imageUrl, domain } = req.body;
+      if (!url) return badRequest(res, "URL is required");
 
       const [newLink] = await db
         .insert(links)
@@ -44,12 +44,12 @@ export default async function handler(req: Request) {
         })
         .returning();
 
-      return Response.json({ link: newLink }, { status: 201 });
+      return res.status(201).json({ link: newLink });
     } catch (error) {
       console.error("Failed to create link:", error);
-      return Response.json({ error: "Failed to create link" }, { status: 500 });
+      return res.status(500).json({ error: "Failed to create link" });
     }
   }
 
-  return methodNotAllowed();
+  return methodNotAllowed(res);
 }

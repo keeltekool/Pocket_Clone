@@ -4,25 +4,22 @@ import { getUserId, unauthorized, methodNotAllowed, badRequest } from "../../lib
 import { eq, and } from "drizzle-orm";
 
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204 });
+    return res.status(204).end();
   }
 
   const userId = await getUserId(req);
-  if (!userId) return unauthorized();
+  if (!userId) return unauthorized(res);
 
-  const url = new URL(req.url);
-  const segments = url.pathname.split("/").filter(Boolean);
-  const id = segments[segments.length - 1];
-
-  if (!id) return badRequest("Bucket ID is required");
+  const id = req.query.id;
+  if (!id) return badRequest(res, "Bucket ID is required");
 
   if (req.method === "PUT") {
     try {
-      const { name } = await req.json();
+      const { name } = req.body;
       const trimmedName = name?.trim();
-      if (!trimmedName) return badRequest("Bucket name is required");
+      if (!trimmedName) return badRequest(res, "Bucket name is required");
 
       const [updated] = await db
         .update(buckets)
@@ -31,16 +28,16 @@ export default async function handler(req: Request) {
         .returning();
 
       if (!updated) {
-        return Response.json({ error: "Bucket not found" }, { status: 404 });
+        return res.status(404).json({ error: "Bucket not found" });
       }
 
-      return Response.json({ bucket: updated });
+      return res.status(200).json({ bucket: updated });
     } catch (error: any) {
       if (error?.code === "23505") {
-        return Response.json({ error: "A bucket with this name already exists" }, { status: 409 });
+        return res.status(409).json({ error: "A bucket with this name already exists" });
       }
       console.error("Failed to rename bucket:", error);
-      return Response.json({ error: "Failed to rename bucket" }, { status: 500 });
+      return res.status(500).json({ error: "Failed to rename bucket" });
     }
   }
 
@@ -50,12 +47,12 @@ export default async function handler(req: Request) {
         .delete(buckets)
         .where(and(eq(buckets.id, id), eq(buckets.userId, userId)));
 
-      return Response.json({ success: true });
+      return res.status(200).json({ success: true });
     } catch (error) {
       console.error("Failed to delete bucket:", error);
-      return Response.json({ error: "Failed to delete bucket" }, { status: 500 });
+      return res.status(500).json({ error: "Failed to delete bucket" });
     }
   }
 
-  return methodNotAllowed();
+  return methodNotAllowed(res);
 }
