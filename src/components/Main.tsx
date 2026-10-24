@@ -33,6 +33,10 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Live-update poll (SPEC §4.2): runs while a card is Sorting… and until `pollUntil`; `since` is the server clock.
   const pollUntil = useRef(0);
+  // Hearts the owner set whose save has not been seen by a later poll yet: id → wanted value, and when its PATCH settled.
+  // A poll that read the database before the PATCH landed would otherwise flip the heart back (plan Review focus 1).
+  const hearts = useRef(new Map<string, { on: boolean; settledAt: number | null }>());
+  const heartQueue = useRef(new Map<string, Promise<void>>());
   const since = useRef(initial.now);
   const [pollKey, setPollKey] = useState(0);
 
@@ -91,9 +95,13 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     if (!sorting && Date.now() >= pollUntil.current) return;
     const t = setInterval(async () => {
       try {
+        const started = Date.now();
         const [r, s] = await Promise.all([api(`/api/items?changedSince=${encodeURIComponent(since.current)}`), api("/api/suggestions")]);
-        const { items: changed, now } = (await r.json()) as { items: Card[]; now: string };
+        const { items: fetched, now } = (await r.json()) as { items: Card[]; now: string };
         since.current = now;
+        const changed = fetched.map((c) => (hearts.current.has(c.id) ? { ...c, favourite: hearts.current.get(c.id)!.on } : c));
+        // A poll that started after a heart's PATCH settled read the saved value: the override is no longer needed.
+        for (const [id, h] of hearts.current) if (h.settledAt !== null && h.settledAt < started) hearts.current.delete(id);
         if (changed.length) {
           setItems((prev) => merge(prev, changed));
           setResults((prev) => (prev ? merge(prev, changed.filter((c) => prev.some((p) => p.id === c.id))) : prev));
@@ -172,21 +180,30 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       patchCards((c) => (c.id === updated.id ? updated : c));
     }, "Couldn't move. Try again.");
 
-  // Heart (SPEC §6.6a): flips at once, sends the new value; a failure flips it back. A poll that merges this card meanwhile
-  // carries the database value, which the PATCH has already written or is about to.
+  // Heart (SPEC §6.6a): flips at once and sends the new value. Saves for one card go out one after another, so two quick
+  // clicks reach the server in click order; a failed save flips the card back unless a newer click has replaced it.
   function favourite(item: Card) {
     const on = !item.favourite;
     const flip = (v: boolean) => patchCards((c) => (c.id === item.id ? { ...c, favourite: v } : c));
+    const mine = { on, settledAt: null as number | null };
+    hearts.current.set(item.id, mine);
     flip(on);
-    attempt(async () => {
-      try {
-        const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ favourite: on }) });
-        if (!r.ok) throw new Error();
-      } catch (err) {
-        flip(!on);
-        throw err;
-      }
-    }, "Couldn't update. Try again.");
+    const save = () =>
+      attempt(async () => {
+        try {
+          const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ favourite: on }) });
+          if (!r.ok) throw new Error();
+        } catch (err) {
+          if (hearts.current.get(item.id) === mine) {
+            hearts.current.delete(item.id);
+            flip(!on);
+          }
+          throw err;
+        }
+      }, "Couldn't update. Try again.").then(() => {
+        mine.settledAt = Date.now();
+      });
+    heartQueue.current.set(item.id, (heartQueue.current.get(item.id) ?? Promise.resolve()).then(save));
   }
 
   const remove = (item: Card) =>

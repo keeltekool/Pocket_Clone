@@ -109,6 +109,9 @@ try {
   assert.equal((await api(`/api/items/${item.id}`, { method: "PATCH", ...json({ favourite: true, bucketId: null }) })).status, 400);
   assert.equal((await api(`/api/items/${item.id}`, { method: "PATCH", ...json({}) })).status, 400);
   assert.equal((await api(`/api/items/${item.id}`, { method: "PATCH", ...json({ favourite: "yes" }) })).status, 400);
+  assert.equal((await api(`/api/items/${item.id}`, { method: "PATCH", body: "null" })).status, 400);
+  assert.equal((await api(`/api/items/${item.id}`, { method: "PATCH", body: "42" })).status, 400);
+  assert.equal((await api("/api/items/00000000-0000-4000-8000-000000000000", { method: "PATCH", ...json({ favourite: true }) })).status, 404);
   const unhearted = (await api(`/api/items/${item.id}`, { method: "PATCH", ...json({ favourite: false }) })).body.item;
   assert.ok(unhearted.favourite === false && unhearted.bucket?.id === bucket.id, JSON.stringify(unhearted));
   ok("favourite on → in ?bucket=favourites, bucket/status/sortedBy kept; both/neither/non-boolean → 400; off");

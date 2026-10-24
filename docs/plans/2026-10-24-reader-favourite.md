@@ -63,6 +63,23 @@ the sheet; 1920 composition unchanged; failure revert (route `**/api/items/*` PA
 flips back + toast. Screenshots 375/1440/1920. `code-reviewer` on the Phase 1 diff. Owner sees: hearts and a Favourites
 filter (after ship).
 
+**Gate 1 result (24.10.2026):** build clean; `check-api` 18/18, `check-mcp` 10/10, `check-ui-flows` 46/46 locally
+(1440/375/1920 + an 820 touch tablet). `code-reviewer` verdict "not ready" → answered:
+- I1 poll could undo a heart → fixed: `Main.tsx` keeps hearts awaiting a save in a ref; polls keep the owner's value,
+  and the override clears only on a poll that started after the PATCH settled. I2 the flow did not reach the race →
+  rewritten: it holds a `changedSince` answer that read the row before the PATCH and releases it after; it failed on
+  the old build ("a stale poll flipped the heart back") and passes on the fix.
+- I3 empty-state proof skipped → the skip came from owner row #125, hearted by the builder's ad-hoc debug script (not
+  a flow), reset to false the same hour; the step ran in the gate run and logs when real favourites make it skip.
+- M1 quick double clicks → saves per card are queued in click order; a failed save reverts only when no newer click
+  replaced it. M2 null/primitive PATCH body → 400. M7 unknown id → 404 asserted. Tablet (unverified) → flow step at 820
+  touch. 1920 hover-hide → asserted.
+- Not changed: M3/M4 (no bucket or suggestion named Unsorted/Favourites exists: checked with `pocket_list_buckets`);
+  M5 (the global `:focus-visible` rule in `livery/tokens.css` already gives every button the terracotta ring);
+  M6 deviation noted: `check-mcp` sets `favourite` by SQL because MCP has no write path for it by design; the PATCH is
+  proved in `check-api`. Session expiry on the card heart goes through the shared `api` 401 path covered by the
+  existing "session expiry mid-use" step.
+
 ## Phase 2 — Reader (paragraph text, `/read/<number>`, Read button)
 
 - [ ] **Task 2.1 — Paragraph-keeping text**

@@ -12,7 +12,8 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function PATCH(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!isUuid(id)) return notFound();
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") return badRequest("bucketId or favourite required"); // `in` throws on null/primitives
   const move = "bucketId" in body;
   if (move === ("favourite" in body)) return badRequest("bucketId or favourite required");
   if (!move) {

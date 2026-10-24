@@ -290,10 +290,11 @@ try {
     await heart(page).click();
     await card(page).waitFor({ state: "detached", timeout: 5_000 });
     await page.fill("#search-input", "");
+    // The empty copy needs zero favourites; the owner's own hearts are never touched, so with any it is skipped (logged).
     if ((await sidebarCount(page, "favourites")) === "0") {
       await page.locator('text="No favourites yet."').waitFor({ timeout: 5_000 });
       await page.locator('text="Tap the heart on a link to keep it here."').waitFor({ timeout: 5_000 });
-    }
+    } else console.log("      (owner has favourites: empty-state copy skipped)");
     const [row] = await sql`select favourite from items where url = ${TEST_URL}`;
     expect(row.favourite === false, "un-heart not saved");
     await page.click('.sidebar-item[data-view="all"]');
@@ -312,22 +313,49 @@ try {
     }
   });
 
-  // Review focus 1: the live-update poll merges whole cards; a heart clicked while a card is Sorting… must survive it,
-  // also when the card is filed meanwhile.
-  await step("heart on a Sorting… card survives the poll and the filing (Review focus 1)", async () => {
+  // Review focus 1 (Gate 1 review): the poll merges whole cards. A poll that read the database before the heart's PATCH
+  // and answers after it must not flip the heart back. The poll's response is held until the PATCH has landed.
+  await step("a poll answered after the heart's PATCH keeps the heart on (Review focus 1)", async () => {
     const u = `https://en.wikipedia.org/wiki/Favourite_race?pcflow=${RUN}`;
     await sql`insert into items (url, url_key, title, domain, status, sort_attempts, sorted_at)
               values (${u}, ${`en.wikipedia.org/wiki/Favourite_race?pcflow=${RUN}`}, 'Favourite race', 'en.wikipedia.org', 'sorting', 1, now())`;
     await page.reload({ waitUntil: "load" });
-    await card(page, u).hover();
-    await heart(page, u).click();
-    await page.waitForTimeout(9_000); // two poll ticks
-    expect((await heart(page, u).getAttribute("aria-pressed")) === "true", "poll flipped the heart back");
-    await sql`update items set status = 'unsorted', sorted_at = now() where url = ${u}`;
-    await card(page, u).locator('.card-bucket:text-is("Unsorted")').waitFor({ timeout: 15_000 });
-    expect((await heart(page, u).getAttribute("aria-pressed")) === "true", "filing flipped the heart back");
-    await sql`delete from items where url = ${u}`;
-    await page.reload({ waitUntil: "load" });
+    await card(page, u).waitFor({ timeout: 10_000 });
+    let release;
+    const held = new Promise((r) => (release = r));
+    let readDone;
+    const read = new Promise((r) => (readDone = r));
+    let armed = true;
+    await page.route("**/api/items?changedSince=*", async (route) => {
+      if (!armed) return route.continue();
+      const response = await route.fetch(); // the poll reads the database now
+      // Hold only the first answer that carries the filed card (favourite still false); earlier ones pass through.
+      if (!(await response.json()).items.some((i) => i.url === u)) return route.fulfill({ response });
+      armed = false;
+      readDone();
+      await held;
+      await route.fulfill({ response });
+    });
+    try {
+      await sql`update items set status = 'unsorted', sorted_at = now() where url = ${u}`; // the agent files it
+      await read;
+      await card(page, u).hover();
+      const patched = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("/api/items/"));
+      await heart(page, u).click();
+      await patched;
+      release();
+      await card(page, u).locator('.card-bucket:text-is("Unsorted")').waitFor({ timeout: 10_000 }); // the held poll merged
+      expect((await heart(page, u).getAttribute("aria-pressed")) === "true", "a stale poll flipped the heart back");
+      await page.waitForTimeout(9_000); // later polls carry the saved value
+      expect((await heart(page, u).getAttribute("aria-pressed")) === "true", "heart lost after later polls");
+      const [row] = await sql`select favourite from items where url = ${u}`;
+      expect(row.favourite === true, "heart not saved");
+    } finally {
+      release();
+      await page.unroute("**/api/items?changedSince=*");
+      await sql`delete from items where url = ${u}`;
+      await page.reload({ waitUntil: "load" });
+    }
   });
 
   await step("create a bucket from the sidebar; duplicate name is refused", async () => {
@@ -663,6 +691,12 @@ try {
     expect(box.width <= 1400 && box.width > 1200, `content width ${box.width}px`);
     expect(box.left > 200, `content starts at ${box.left}px, not centred`);
     expect(box.sidebar, "sidebar hidden at 1920");
+    // v2.1: an outline heart stays hidden until hover at 1920 too (any card the owner has not hearted).
+    const outline = w.page.locator('.heart-btn[aria-pressed="false"]').first();
+    if (await outline.count()) {
+      await w.page.mouse.move(0, 0);
+      await expectOpacity(outline, "0", "outline heart visible without hover at 1920");
+    }
     await w.page.screenshot({ path: join(OUT, "1920-app.png") });
     await w.page.goto(`${BASE}/setup`, { waitUntil: "load" });
     await w.page.locator("#claude-code").waitFor({ timeout: 10_000 });
@@ -674,6 +708,21 @@ try {
     await w.page.locator("#auth-form").waitFor({ state: "visible", timeout: 5_000 });
   });
   await w.ctx.close();
+
+  // Touch tablet (iPad width, no hover): the outline heart must be visible without hover (SPEC §4.2, Gate 1 review).
+  await step("touch tablet at 820: outline heart visible without hover", async () => {
+    const ctx820 = await browser.newContext({ viewport: { width: 820, height: 1180 }, isMobile: true, hasTouch: true });
+    try {
+      const t = await ctx820.newPage();
+      await t.goto(BASE, { waitUntil: "load" });
+      await login(t, false);
+      const outline = t.locator('.heart-btn[aria-pressed="false"]').first();
+      if (!(await outline.count())) return console.log("      (no un-hearted card: skipped)");
+      await expectOpacity(outline, "1", "outline heart hidden on a touch tablet");
+    } finally {
+      await ctx820.close();
+    }
+  });
 
   await step("no console errors", async () => {
     expect(consoleErrors.length === 0, consoleErrors.join(" | "));
