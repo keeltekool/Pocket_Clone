@@ -214,6 +214,22 @@ body {
   color: var(--ink);
 }
 
+.remember-device {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+#auth-form .remember-device input {
+  width: auto;
+  padding: 0;
+  accent-color: var(--terracotta);
+}
+
 #auth-form input:focus {
   border-color: var(--terracotta-soft);
   box-shadow: 0 0 0 4px var(--terracotta-glow);

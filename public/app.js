@@ -12,65 +12,58 @@ const bucketSidebar = document.getElementById('bucket-sidebar');
 const mobileFilterBtn = document.getElementById('mobile-filter-btn');
 const mobileFilterName = document.getElementById('mobile-filter-name');
 const mobileBucketSheet = document.getElementById('mobile-bucket-sheet');
+const authForm = document.getElementById('auth-form');
+const passwordInput = document.getElementById('password-input');
+const rememberInput = document.getElementById('remember-input');
+const authError = document.getElementById('auth-error');
 
 // State
-let currentUser = null;
+let authed = false; // session cookie accepted by /api/auth
 let buckets = [];
 let currentBucketId = null; // null = "All Links"
 let links = []; // Store links for count calculations
 let isReloading = false; // Prevent multiple simultaneous reloads
 
 // ============================================
-// CLERK AUTH
+// AUTH (one password, HttpOnly session cookie)
 // ============================================
 
-async function getAuthHeaders() {
-  const token = await window.Clerk.session?.getToken();
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
+// Same-origin fetches send the session cookie by themselves.
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
-async function initClerk() {
-  const clerk = window.Clerk;
-  await clerk.load();
-
-  if (clerk.user) {
-    currentUser = clerk.user;
+// known = true right after a successful login, so the session check is skipped.
+async function init(known) {
+  authed = known === true || (await fetch('/api/auth').then(r => r.json()).catch(() => ({}))).authed === true;
+  if (authed) {
     showMainApp();
     await Promise.all([loadBuckets(), loadLinks()]);
-    // Mount Clerk user button
-    const userBtnEl = document.getElementById('clerk-user-btn');
-    if (userBtnEl) clerk.mountUserButton(userBtnEl);
   } else {
     showAuth();
-    clerk.mountSignIn(document.getElementById('clerk-sign-in'));
+    passwordInput.focus();
   }
+}
 
-  // Listen for auth changes
-  clerk.addListener(async ({ user }) => {
-    if (user) {
-      currentUser = user;
-      showMainApp();
-      await Promise.all([loadBuckets(), loadLinks()]);
-      const userBtnEl = document.getElementById('clerk-user-btn');
-      if (userBtnEl && !userBtnEl.hasChildNodes()) {
-        clerk.mountUserButton(userBtnEl);
-      }
-    } else {
-      currentUser = null;
-      buckets = [];
-      links = [];
-      currentBucketId = null;
-      showAuth();
-      clerk.mountSignIn(document.getElementById('clerk-sign-in'));
-    }
+async function handleLogin(e) {
+  e.preventDefault();
+  const response = await fetch('/api/auth', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ password: passwordInput.value, remember: rememberInput.checked }),
   });
+  authError.hidden = response.ok;
+  if (response.ok) {
+    passwordInput.value = '';
+    await init(true);
+  }
 }
 
 // UI State Functions
 function showAuth() {
+  authed = false;
+  linksGrid.innerHTML = '';
+  buckets = [];
+  links = [];
+  currentBucketId = null;
   authSection.style.display = 'block';
   mainSection.style.display = 'none';
 }
@@ -81,11 +74,8 @@ function showMainApp() {
 }
 
 async function handleLogout() {
-  await window.Clerk.signOut();
-  linksGrid.innerHTML = '';
-  buckets = [];
-  links = [];
-  currentBucketId = null;
+  await fetch('/api/auth', { method: 'DELETE' });
+  showAuth();
 }
 
 // ============================================
@@ -95,7 +85,7 @@ async function handleLogout() {
 async function loadBuckets() {
   try {
     const response = await fetch('/api/buckets', {
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
     });
     const data = await response.json();
 
@@ -103,6 +93,7 @@ async function loadBuckets() {
 
     buckets = data.buckets || [];
     renderBucketSidebar();
+    refreshCardBucketMenus(); // cards drawn before the buckets arrived, or an AI-made bucket
   } catch (err) {
     console.error('Failed to load buckets:', err);
   }
@@ -115,7 +106,7 @@ async function createBucket(name) {
   try {
     const response = await fetch('/api/buckets', {
       method: 'POST',
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
       body: JSON.stringify({ name: trimmedName }),
     });
     const data = await response.json();
@@ -128,6 +119,7 @@ async function createBucket(name) {
     buckets.push(data.bucket);
     buckets.sort((a, b) => a.name.localeCompare(b.name));
     renderBucketSidebar();
+    refreshCardBucketMenus();
     return data.bucket;
   } catch (err) {
     console.error('Failed to create bucket:', err);
@@ -142,7 +134,7 @@ async function renameBucket(bucketId, newName) {
   try {
     const response = await fetch(`/api/buckets/${bucketId}`, {
       method: 'PUT',
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
       body: JSON.stringify({ name: trimmedName }),
     });
     const data = await response.json();
@@ -156,6 +148,7 @@ async function renameBucket(bucketId, newName) {
     if (bucket) bucket.name = trimmedName;
     buckets.sort((a, b) => a.name.localeCompare(b.name));
     renderBucketSidebar();
+    refreshCardBucketMenus();
     return true;
   } catch (err) {
     console.error('Failed to rename bucket:', err);
@@ -174,12 +167,13 @@ async function deleteBucket(bucketId) {
   try {
     const response = await fetch(`/api/buckets/${bucketId}`, {
       method: 'DELETE',
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
     });
 
     if (!response.ok) throw new Error('Failed to delete');
 
     buckets = buckets.filter(b => b.id !== bucketId);
+    links.forEach(l => { if (l.bucketId === bucketId) l.bucketId = null; }); // DB does ON DELETE SET NULL
 
     // If viewing deleted bucket, switch to All Links
     if (currentBucketId === bucketId) {
@@ -188,6 +182,7 @@ async function deleteBucket(bucketId) {
     }
 
     renderBucketSidebar();
+    refreshCardBucketMenus();
   } catch (err) {
     console.error('Failed to delete bucket:', err);
     alert('Failed to delete bucket');
@@ -198,7 +193,7 @@ async function assignLinkToBucket(linkId, bucketId) {
   try {
     const response = await fetch(`/api/links/${linkId}`, {
       method: 'PUT',
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
       body: JSON.stringify({ bucketId }),
     });
 
@@ -211,6 +206,7 @@ async function assignLinkToBucket(linkId, bucketId) {
     }
 
     renderBucketSidebar();
+    refreshCardBucketMenus();
 
     // If filtering by bucket and link moved out, remove from view
     if (currentBucketId && bucketId !== currentBucketId) {
@@ -297,6 +293,15 @@ function renderBucketSidebar() {
   `;
 
   renderMobileBucketList();
+}
+
+// Card menus are built per card; redraw them after a bucket is created, renamed or deleted.
+function refreshCardBucketMenus() {
+  document.querySelectorAll('.link-card').forEach(card => {
+    const link = links.find(l => l.id === card.dataset.id);
+    const dropdown = card.querySelector('.bucket-dropdown');
+    if (link && dropdown) dropdown.outerHTML = createBucketDropdown(link);
+  });
 }
 
 function renderMobileBucketList() {
@@ -500,21 +505,10 @@ async function createBucketFromDropdown(linkId) {
 
 async function fetchMetadata(url) {
   try {
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const response = await fetch(proxyUrl);
+    const response = await fetch(`/api/metadata?url=${encodeURIComponent(url)}`);
     const data = await response.json();
-    const html = data.contents;
-
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-
-    const title = doc.querySelector('title')?.textContent?.trim() ||
-                  doc.querySelector('meta[property="og:title"]')?.content?.trim() ||
-                  url;
-    const ogImage = doc.querySelector('meta[property="og:image"]')?.content ||
-                    doc.querySelector('meta[name="twitter:image"]')?.content ||
-                    null;
-
-    return { title, ogImage };
+    if (!response.ok) throw new Error(data.error);
+    return { title: data.title || url, ogImage: data.imageUrl };
   } catch (err) {
     console.error('Failed to fetch metadata:', err);
     return { title: url, ogImage: null };
@@ -590,7 +584,7 @@ async function loadLinks() {
 
   try {
     const response = await fetch('/api/links', {
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
     });
     const data = await response.json();
 
@@ -648,7 +642,7 @@ async function addLink(e) {
   try {
     const response = await fetch('/api/links', {
       method: 'POST',
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
       body: JSON.stringify({ url, title: url, domain }),
     });
     const data = await response.json();
@@ -683,7 +677,7 @@ async function enrichLinkInBackground(linkId, url, domain) {
     if (displayTitle || ogImage) {
       await fetch(`/api/links/${linkId}`, {
         method: 'PUT',
-        headers: await getAuthHeaders(),
+        headers: JSON_HEADERS,
         body: JSON.stringify({
           ...(displayTitle && { title: displayTitle }),
           ...(ogImage && { imageUrl: ogImage }),
@@ -728,7 +722,7 @@ async function categorizeWithAI(linkId, title, domain, url) {
   try {
     const response = await fetch('/api/categorize', {
       method: 'POST',
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
       body: JSON.stringify({ linkId, title, domain, url }),
     });
 
@@ -748,14 +742,7 @@ async function categorizeWithAI(linkId, title, domain, url) {
       }
 
       renderBucketSidebar();
-
-      const card = document.querySelector(`[data-id="${linkId}"]`);
-      if (card) {
-        const dropdownBtn = card.querySelector('.bucket-dropdown-text');
-        if (dropdownBtn) {
-          dropdownBtn.textContent = result.bucketName;
-        }
-      }
+      refreshCardBucketMenus();
     }
   } catch (err) {
     console.error('AI categorization failed:', err);
@@ -768,7 +755,7 @@ async function deleteLink(id, cardElement) {
   try {
     const response = await fetch(`/api/links/${id}`, {
       method: 'DELETE',
-      headers: await getAuthHeaders(),
+      headers: JSON_HEADERS,
     });
 
     if (!response.ok) throw new Error('Failed to delete');
@@ -794,6 +781,7 @@ async function deleteLink(id, cardElement) {
 // ============================================
 
 logoutBtn.addEventListener('click', handleLogout);
+authForm.addEventListener('submit', handleLogin);
 addLinkForm.addEventListener('submit', addLink);
 
 if (mobileFilterBtn) {
@@ -827,15 +815,7 @@ async function reloadAfterRestore() {
   isReloading = true;
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    if (window.Clerk?.user) {
-      currentUser = window.Clerk.user;
-      await Promise.all([loadBuckets(), loadLinks()]);
-    } else {
-      currentUser = null;
-      showAuth();
-    }
+    await init();
   } catch (err) {
     console.error('Error during reload:', err);
   } finally {
@@ -850,7 +830,7 @@ window.addEventListener('pageshow', (event) => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && currentUser) {
+  if (document.visibilityState === 'visible' && authed) {
     const gridEmpty = linksGrid.children.length === 0;
     const loadingVisible = linksLoading.style.display === 'block';
     if (gridEmpty || loadingVisible) {
@@ -860,26 +840,13 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('focus', () => {
-  if (currentUser && linksGrid.children.length === 0 && mainSection.style.display !== 'none') {
+  if (authed && linksGrid.children.length === 0) {
     reloadAfterRestore();
   }
 });
 
 // ============================================
-// INITIALIZE - Wait for Clerk
+// INITIALIZE
 // ============================================
 
-function waitForClerk() {
-  if (window.Clerk) {
-    initClerk();
-  } else {
-    const check = setInterval(() => {
-      if (window.Clerk) {
-        clearInterval(check);
-        initClerk();
-      }
-    }, 100);
-  }
-}
-
-window.addEventListener('load', waitForClerk);
+window.addEventListener('load', init);

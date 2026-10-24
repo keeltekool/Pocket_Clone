@@ -83,11 +83,10 @@
     const message = document.getElementById('message');
     const urlDisplay = document.getElementById('url-display');
 
-    // Get params from URL: url, key (API key), user (user ID)
+    // Get params from URL: url, key (API key)
     const params = new URLSearchParams(window.location.search);
     const url = params.get('url') || params.get('text');
     const apiKey = params.get('key');
-    const userId = params.get('user');
 
     async function saveLink(linkUrl) {
       icon.innerHTML = '<div class="spinner"></div>';
@@ -96,41 +95,14 @@
       urlDisplay.style.display = 'block';
 
       try {
-        // Extract domain
-        const domain = new URL(linkUrl).hostname.replace('www.', '');
-
-        // Fetch metadata via proxy
-        let title = linkUrl;
-        let imageUrl = null;
-        try {
-          const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(linkUrl)}`;
-          const metaRes = await fetch(proxyUrl);
-          const metaData = await metaRes.json();
-          const doc = new DOMParser().parseFromString(metaData.contents, 'text/html');
-          title = doc.querySelector('title')?.textContent?.trim() ||
-                  doc.querySelector('meta[property="og:title"]')?.content?.trim() ||
-                  linkUrl;
-          imageUrl = doc.querySelector('meta[property="og:image"]')?.content ||
-                     doc.querySelector('meta[name="twitter:image"]')?.content ||
-                     null;
-        } catch (e) {
-          console.log('Metadata fetch failed, using URL as title');
-        }
-
-        // Save via API
+        // Save via API (the server fetches title + image)
         const response = await fetch('/api/save', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-API-Key': apiKey,
-            'X-User-Id': userId,
           },
-          body: JSON.stringify({
-            url: linkUrl,
-            title: title,
-            imageUrl: imageUrl,
-            domain: domain,
-          })
+          body: JSON.stringify({ url: linkUrl })
         });
 
         if (!response.ok) {
@@ -150,10 +122,10 @@
       }
     }
 
-    if (!apiKey || !userId) {
+    if (!apiKey) {
       icon.textContent = '🔑';
       message.textContent = 'Missing credentials';
-      urlDisplay.textContent = 'URL must include key and user parameters';
+      urlDisplay.textContent = 'URL must include the key parameter';
       urlDisplay.style.display = 'block';
     } else if (url) {
       saveLink(url);
