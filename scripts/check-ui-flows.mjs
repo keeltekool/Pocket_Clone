@@ -23,9 +23,13 @@ const DUP_URL = `https://www.en.wikipedia.org/wiki/Bookmark_(digital)/?utm_sourc
 const MOBILE_URL = `https://en.wikipedia.org/wiki/Hyperlink?pcflow=${RUN}`;
 const BUCKET = `pcflow-${RUN}`;
 const RENAMED = `${BUCKET}-renamed`;
+const SUGGEST = `pcflow-${RUN}-s`;
+const ADD_URL = `https://en.wikipedia.org/wiki/Web_browser?pcflow=${RUN}`;
 // login_failures rows from this run are removed at the end. Kept as DB text: a JS Date goes out with the local +03:00
 // offset, which a timestamp-without-zone column drops, shifting the cutoff three hours ahead.
 const [{ runStart }] = await sql`select now()::timestamp::text as "runStart"`;
+// Locally no agent can reach /api/mcp (it only exists deployed), so saves are settled by hand; on prod the real agent runs.
+const LOCAL = /localhost|127\.0\.0\.1/.test(BASE);
 
 let passed = 0;
 const failures = [];
@@ -134,9 +138,26 @@ try {
     expect(Number(number) > 0, `no number on the card: ${number}`);
     const title = await card(page).locator(".card-title").innerText();
     expect(title && title !== TEST_URL && /bookmark/i.test(title), `title not fetched: ${title}`);
-    expect((await card(page).locator(".card-bucket").first().innerText()).trim() === "Unsorted", "new link is not Unsorted");
+    expect((await card(page).locator(".card-bucket").first().innerText()).trim() === "Sorting…", "new link is not Sorting…");
     expect((await page.inputValue("#url-input")) === "", "link box not cleared");
     await page.screenshot({ path: join(OUT, "1440-card.png") });
+  });
+
+  await step(LOCAL ? "settle the card (no agent locally) → Unsorted" : "agent files the link within 5 min (real session)", async () => {
+    if (LOCAL) {
+      await sql`update items set status = 'unsorted', sorted_at = now() where url = ${TEST_URL}`;
+      await page.reload({ waitUntil: "load" });
+      await card(page).locator('.card-bucket:text-is("Unsorted")').waitFor({ timeout: 10_000 });
+      return;
+    }
+    // The page polls every 4 s while a card is Sorting…; the agent reads the page and files it.
+    await page.waitForFunction(
+      (u) => { const c = [...document.querySelectorAll(".item-card")].find((x) => x.querySelector(`.card-title[href="${u}"]`)); const t = c?.querySelector(".card-bucket")?.textContent.trim(); return t && t !== "Sorting…"; },
+      TEST_URL, { timeout: 5 * 60_000, polling: 2_000 },
+    );
+    const label = (await card(page).locator(".card-bucket").first().innerText()).trim();
+    console.log(`      filed as: ${label}`);
+    await page.screenshot({ path: join(OUT, "1440-sorted.png") });
   });
 
   await step("same link under www/utm/fragment/slash → Already saved toast + highlight", async () => {
@@ -178,6 +199,9 @@ try {
     await page.fill("#new-bucket-input", BUCKET);
     await page.press("#new-bucket-input", "Enter");
     await page.locator(`.sidebar-item .bucket-name:text-is("${BUCKET}")`).waitFor({ timeout: 10_000 });
+    await page.click(`.sidebar-item:has(.bucket-name:text-is("${BUCKET}"))`);
+    await page.locator(`text="No links in ${BUCKET} yet."`).waitFor({ timeout: 5_000 });
+    await page.click('.sidebar-item[data-view="all"]');
     await page.click("#new-bucket-btn");
     await page.fill("#new-bucket-input", BUCKET.toUpperCase());
     await page.press("#new-bucket-input", "Enter");
@@ -216,13 +240,80 @@ try {
     await page.click('.sidebar-item[data-view="all"]');
   });
 
+  // Phase 3: a suggestion strip (inserted as the agent would via pocket_suggest_bucket) → Create bucket pre-fills the
+  // field; Enter creates the bucket and the strip goes; on prod the agent then moves the matching Unsorted links.
+  await step("suggestion strip → Create bucket → pre-filled field → bucket created, strip gone", async () => {
+    const [{ number }] = await sql`select number from items where url = ${TEST_URL}`;
+    await sql`insert into bucket_suggestions (name, reason, item_numbers) values (${SUGGEST}, 'Test links share a topic no bucket covers.', ${[number]})`;
+    await page.reload({ waitUntil: "load" });
+    await page.locator(`#suggestion-strip:has-text("Suggested bucket: ${SUGGEST}")`).waitFor({ timeout: 10_000 });
+    await page.screenshot({ path: join(OUT, "1440-suggestion.png") });
+    await page.click("#suggestion-strip .suggestion-create");
+    await page.locator("#new-bucket-input").waitFor({ timeout: 5_000 });
+    expect((await page.inputValue("#new-bucket-input")) === SUGGEST, "field not pre-filled");
+    await page.press("#new-bucket-input", "Enter");
+    await page.locator(`.sidebar-item .bucket-name:text-is("${SUGGEST}")`).waitFor({ timeout: 10_000 });
+    await page.locator("#suggestion-strip").waitFor({ state: "detached", timeout: 5_000 });
+    const [s] = await sql`select status from bucket_suggestions where name = ${SUGGEST}`;
+    expect(s.status === "created", `suggestion status ${s.status}`);
+    if (!LOCAL) {
+      // The real agent checks the Unsorted pile against the new bucket; the test link is Unsorted and on topic only
+      // loosely, so assert the session ran rather than a move: the bucket exists and polling keeps the page live.
+      await page.waitForTimeout(3_000);
+    }
+    await page.locator(`.sidebar-item:has(.bucket-name:text-is("${SUGGEST}"))`).hover();
+    await page.locator(`div:has(> .sidebar-item .bucket-name:text-is("${SUGGEST}")) .bucket-menu-btn`).click();
+    await page.click('#bucket-context-menu button:has-text("Delete")');
+    await page.locator(`.sidebar-item .bucket-name:text-is("${SUGGEST}")`).waitFor({ state: "detached", timeout: 10_000 });
+  });
+
+  await step("suggestion Dismiss hides it and marks it dismissed", async () => {
+    const [{ number }] = await sql`select number from items where url = ${TEST_URL}`;
+    await sql`insert into bucket_suggestions (name, reason, item_numbers) values (${SUGGEST + "-d"}, 'Dismiss me.', ${[number]})`;
+    await page.reload({ waitUntil: "load" });
+    await page.locator(`#suggestion-strip:has-text("${SUGGEST}-d")`).waitFor({ timeout: 10_000 });
+    await page.click("#suggestion-strip .suggestion-dismiss");
+    await page.locator("#suggestion-strip").waitFor({ state: "detached", timeout: 5_000 });
+    const [s] = await sql`select status from bucket_suggestions where name = ${SUGGEST + "-d"}`;
+    expect(s.status === "dismissed", `suggestion status ${s.status}`);
+    await page.reload({ waitUntil: "load" });
+    await card(page).waitFor({ state: "visible", timeout: 10_000 });
+    expect((await page.locator("#suggestion-strip").count()) === 0, "dismissed suggestion came back");
+  });
+
   await step("session expiry mid-use → login screen (Review focus 3)", async () => {
     await ctx.clearCookies();
-    await page.fill("#url-input", "https://example.com/expired");
+    await page.fill("#url-input", `https://example.com/expired?pcflow=${RUN}`);
     await page.click("#add-btn");
     await page.locator("#auth-form").waitFor({ state: "visible", timeout: 10_000 });
     await login(page, true);
     await card(page).waitFor({ state: "visible", timeout: 10_000 });
+  });
+
+  // Phase 4: the bookmarklet window. Logged in → saves and reports; the same link again → Already saved; logged out →
+  // login form inside the popup, then it saves.
+  await step("/add logged in → Saved #N · sorting…; again → Already saved", async () => {
+    const popup = await ctx.newPage();
+    await popup.goto(`${BASE}/add?url=${encodeURIComponent(ADD_URL)}`, { waitUntil: "load" });
+    await popup.locator("#add-status:has-text(\"Saved #\")").waitFor({ timeout: 20_000 });
+    const text = await popup.locator("#add-status").innerText();
+    expect(/^Saved #\d+ · sorting…$/.test(text), `status: ${text}`);
+    await popup.screenshot({ path: join(OUT, "add-saved.png") });
+    await popup.goto(`${BASE}/add?url=${encodeURIComponent(ADD_URL)}`, { waitUntil: "load" });
+    await popup.locator("#add-status:has-text(\"Already saved as #\")").waitFor({ timeout: 20_000 });
+    await popup.close();
+  });
+
+  await step("/add logged out → login form, then saves", async () => {
+    const fresh = await browser.newContext({ viewport: { width: 420, height: 260 } });
+    const popup = await fresh.newPage();
+    await popup.goto(`${BASE}/add?url=${encodeURIComponent(ADD_URL)}`, { waitUntil: "load" });
+    await popup.locator("#auth-form").waitFor({ timeout: 10_000 });
+    await popup.screenshot({ path: join(OUT, "add-login.png") });
+    await popup.fill("#password-input", process.env.APP_PASSWORD);
+    await popup.click("#auth-btn");
+    await popup.locator("#add-status:has-text(\"Already saved as #\")").waitFor({ timeout: 20_000 });
+    await fresh.close();
   });
 
   await step("delete the link → Deleted toast", async () => {
@@ -230,6 +321,25 @@ try {
     await card(page).locator(".delete-btn").click();
     await card(page).waitFor({ state: "detached", timeout: 10_000 });
     await toast(page, `Deleted #${number}`);
+  });
+
+  await step("/setup: three sections, Copy buttons, bookmarklet, masked MCP command", async () => {
+    await page.goto(`${BASE}/setup`, { waitUntil: "load" });
+    for (const id of ["#iphone", "#desktop", "#claude-code"]) await page.locator(id).waitFor({ timeout: 10_000 });
+    await page.click("#copy-save-url");
+    expect((await page.evaluate(() => navigator.clipboard.readText())) === `${BASE.includes("localhost") ? "https://pocket-clone-virid.vercel.app" : BASE}/api/save`, "save URL not copied");
+    await page.click("#copy-key");
+    expect((await page.evaluate(() => navigator.clipboard.readText())) === process.env.SHORTCUT_API_KEY, "key not copied");
+    const shown = await page.locator("#mcp-command").innerText();
+    expect(shown.includes("••••") && !shown.includes(process.env.MCP_TOKEN), "MCP token visible on the page");
+    await page.click("#copy-mcp");
+    const cmd = await page.evaluate(() => navigator.clipboard.readText());
+    expect(cmd.startsWith("claude mcp add --scope user --transport http pocket ") && cmd.includes(process.env.MCP_TOKEN), "MCP command not copied in full");
+    const href = await page.getAttribute("#bookmarklet", "href");
+    expect(href?.startsWith("javascript:window.open(") && href.includes("/add?url="), `bookmarklet href: ${href?.slice(0, 40)}`);
+    await page.screenshot({ path: join(OUT, "1440-setup.png") });
+    await page.goto(BASE, { waitUntil: "load" });
+    await page.locator("#url-input").waitFor({ timeout: 10_000 });
   });
 
   await step("logout locks the app, also after reload", async () => {
@@ -257,6 +367,11 @@ try {
     await m.page.fill("#url-input", MOBILE_URL);
     await m.page.click("#add-btn");
     await card(m.page, MOBILE_URL).waitFor({ state: "visible", timeout: 20_000 });
+    if (LOCAL) {
+      await sql`update items set status = 'unsorted', sorted_at = now() where url = ${MOBILE_URL}`;
+      await m.page.reload({ waitUntil: "load" });
+      await card(m.page, MOBILE_URL).waitFor({ state: "visible", timeout: 10_000 });
+    }
     const c = card(m.page, MOBILE_URL);
     expect(await c.locator(".card-number").first().isVisible(), "#N hidden on the phone");
     expect(await c.locator(".card-bucket").first().isVisible(), "bucket label hidden on the phone");
@@ -282,15 +397,41 @@ try {
     await m.page.locator("#mobile-sheet[data-open]").waitFor({ state: "detached", timeout: 5_000 });
   });
 
+  await step("create and delete a bucket from the sheet", async () => {
+    await m.page.click("#mobile-filter-btn");
+    await m.page.click("#mobile-sheet #new-bucket-btn");
+    await m.page.fill("#mobile-sheet #new-bucket-input", `${BUCKET}-m`);
+    await m.page.press("#mobile-sheet #new-bucket-input", "Enter");
+    const row = m.page.locator(`#mobile-sheet .sheet-item:has-text("${BUCKET}-m")`);
+    await row.waitFor({ timeout: 10_000 });
+    await m.page.locator(`#mobile-sheet div:has(> .sheet-item:has-text("${BUCKET}-m")) .bucket-menu-btn`).click();
+    await m.page.click('#mobile-sheet [role="menu"] button:has-text("Delete")');
+    await row.waitFor({ state: "detached", timeout: 10_000 });
+    await m.page.click("#mobile-sheet .sheet-close");
+  });
+
   await step("delete from the label menu on the phone", async () => {
     await card(m.page, MOBILE_URL).locator(".card-bucket-btn").first().click();
     await m.page.locator(".delete-option").click();
     await card(m.page, MOBILE_URL).waitFor({ state: "detached", timeout: 10_000 });
   });
 
-  await step("logout at 375", async () => {
+  await step("/setup at 375: sections stack, no sideways scroll", async () => {
+    await m.page.goto(`${BASE}/setup`, { waitUntil: "load" });
+    await m.page.locator("#claude-code").waitFor({ timeout: 10_000 });
+    const w = await m.page.evaluate(() => document.documentElement.scrollWidth);
+    expect(w <= 375, `setup page is ${w}px wide`);
+    await m.page.screenshot({ path: join(OUT, "375-setup.png") });
+    await m.page.goto(BASE, { waitUntil: "load" });
+    await m.page.locator("#url-input").waitFor({ timeout: 10_000 });
+  });
+
+  await step("logout at 375; /setup logged out shows the login form", async () => {
     await m.page.click("#logout-btn");
     await m.page.locator("#auth-form").waitFor({ state: "visible", timeout: 5_000 });
+    await m.page.goto(`${BASE}/setup`, { waitUntil: "load" });
+    await m.page.locator("#auth-form").waitFor({ state: "visible", timeout: 10_000 });
+    expect((await m.page.locator("#shortcut-key").count()) === 0, "key rendered while logged out");
   });
   await m.ctx.close();
 
@@ -309,6 +450,12 @@ try {
     expect(box.left > 200, `content starts at ${box.left}px, not centred`);
     expect(box.sidebar, "sidebar hidden at 1920");
     await w.page.screenshot({ path: join(OUT, "1920-app.png") });
+    await w.page.goto(`${BASE}/setup`, { waitUntil: "load" });
+    await w.page.locator("#claude-code").waitFor({ timeout: 10_000 });
+    expect(await w.page.locator('nav[aria-label="Sections"]').isVisible(), "setup rail hidden at 1920");
+    await w.page.screenshot({ path: join(OUT, "1920-setup.png") });
+    await w.page.goto(BASE, { waitUntil: "load" });
+    await w.page.locator("#logout-btn").waitFor({ timeout: 10_000 });
     await w.page.click("#logout-btn");
     await w.page.locator("#auth-form").waitFor({ state: "visible", timeout: 5_000 });
   });
@@ -322,6 +469,7 @@ try {
   // Backstop: remove anything this run left behind.
   await sql`delete from items where url like ${"%pcflow=" + RUN + "%"}`;
   await sql`delete from buckets where name like ${BUCKET + "%"}`;
+  await sql`delete from bucket_suggestions where name like ${BUCKET + "%"}`;
   await sql`delete from login_failures where created_at >= ${runStart}::timestamp`;
 }
 

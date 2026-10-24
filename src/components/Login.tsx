@@ -32,10 +32,10 @@ export function Login({ onAuthed, compact }: { onAuthed: () => void; compact?: b
   }
 
   return (
-    <div className={`animate-auth-in bg-glow text-center ${compact ? "p-6" : "min-h-screen p-10"}`}>
-      <h1 className={`mb-1 font-display text-ink text-shadow-glow ${compact ? "text-title" : "text-hero"}`}>Pocket Clone</h1>
-      <p className={`text-lede text-ink-muted ${compact ? "mb-6" : "mb-10"}`}>Save links for later</p>
-      <form id="auth-form" onSubmit={submit} className="mx-auto flex w-full max-w-form flex-col gap-4">
+    <div className={`animate-auth-in bg-glow text-center ${compact ? "p-4" : "min-h-screen p-10"}`}>
+      <h1 className={`font-display text-ink text-shadow-glow ${compact ? "mb-3 text-heading" : "mb-1 text-hero"}`}>Pocket Clone</h1>
+      {!compact && <p className="mb-10 text-lede text-ink-muted">Save links for later</p>}
+      <form id="auth-form" onSubmit={submit} className={`mx-auto flex w-full max-w-form flex-col ${compact ? "gap-2 [&_input[type=password]]:py-2 [&_button]:py-2" : "gap-4"}`}>
         <TextField
           id="password-input"
           type="password"
