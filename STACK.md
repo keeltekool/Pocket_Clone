@@ -33,10 +33,14 @@ node scripts/check-page.mjs                  # normalizeUrl / firstUrl / one rea
 node scripts/check-api.mjs http://localhost:3100    # 16 HTTP steps incl. /api/save
 node scripts/check-mcp.mjs http://localhost:3100    # 401 + initialize + all six pocket_* tools
 node scripts/check-ui-flows.mjs [baseUrl]    # click-through 375/1440/1920; on prod waits for the real agent (5 min)
+node scripts/check-agent.mjs                 # prod: 3 real saves → filed buckets, cost per sort, claude -p "pocket #N"
 npm run agent:sync                           # idempotent Managed Agents setup (env, vault + token, agent prompt/model)
-node scripts/migrate-v2.mjs                  # one-time v1 → v2 (refuses to run twice)
 node ~/.claude/scripts/ship.mjs / /setup     # push → Vercel git deploy → verify-deploy + check-ui-flows on prod
 ```
+
+Measured 24.10.2026 on prod: a sort takes 6–9 s and costs $0.03–0.06 at list prices (average $0.04); the spec estimated
+$0.20–0.50. The v1 → v2 migration (`scripts/migrate-v2.mjs`, explicit SQL, seeds the 8 buckets) ran once on 24.10 and was
+removed; `src/db/schema.ts` is the schema record.
 
 Flow scripts write only marker rows (`?pcflow=<run>` URLs, `pcflow-<run>` buckets/suggestions) and delete them in `finally`.
 
@@ -61,5 +65,6 @@ Flow scripts write only marker rows (`?pcflow=<run>` URLs, `pcflow-<run>` bucket
 ## Deployment
 
 Commit → `node ~/.claude/scripts/ship.mjs / /setup` from the repo root (Git Bash: `MSYS_NO_PATHCONV=1`). Vercel project
-`pocket-clone`, git-linked, functions in `fra1` (check `x-vercel-id`). Deploy only at gates; a failed check → `git revert`
-first. Cost per sort is measured on the session's `usage.list_cost` after a prod save.
+`pocket-clone`, git-linked, functions in `fra1` (check `x-vercel-id`). A failed check → `git revert` first. The prod
+click-through starts real agent sessions (about $0.15 per run); the bookmarklet step runs on `/setup?pcflow=…` because the
+main view rewrites its URL on load.
