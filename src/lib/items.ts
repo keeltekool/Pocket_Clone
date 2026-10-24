@@ -1,7 +1,9 @@
 import { and, desc, eq, gt, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { buckets, items } from "@/db/schema";
+import { isUuid } from "@/lib/buckets";
 import { domainOf, fetchPage, firstUrl, normalizeUrl } from "@/lib/page";
+import { dispatchSort } from "@/lib/sorter";
 
 // What the UI and MCP list endpoints return per link (SPEC §4.2): no page text.
 const cardColumns = {
@@ -34,7 +36,7 @@ export type ListFilter = { bucket?: string | null; q?: string | null; changedSin
 export async function listItems(f: ListFilter = {}): Promise<Card[]> {
   const where: SQL[] = [];
   if (f.bucket === "unsorted") where.push(eq(items.status, "unsorted"));
-  else if (f.bucket) where.push(eq(items.bucketId, f.bucket));
+  else if (f.bucket) where.push(isUuid(f.bucket) ? eq(items.bucketId, f.bucket) : sql`false`);
   if (f.q) {
     const needle = `%${f.q}%`;
     where.push(or(ilike(items.title, needle), ilike(items.domain, needle), ilike(items.url, needle), ilike(items.pageText, needle))!);
@@ -56,7 +58,8 @@ export async function getCard(where: SQL): Promise<Card | null> {
 export class NotALink extends Error {}
 
 // The one save pipeline (SPEC §6.1), shared by the app box, the bookmarklet and the iPhone Shortcut.
-// Duplicate (same normalised URL) → the existing card. New → page fetched first (8 s cap) so the sorter has the text.
+// Duplicate (same normalised URL) → the existing card. New → page fetched first (8 s cap) so the sorter has the text,
+// then the sorting agent is dispatched and the card comes back as `sorting`.
 export async function saveLink(input: string): Promise<{ item: Card; duplicate: boolean }> {
   const url = firstUrl(input);
   if (!url) throw new NotALink("That doesn't look like a link.");
@@ -75,12 +78,13 @@ export async function saveLink(input: string): Promise<{ item: Card; duplicate: 
       domain: domainOf(url),
       imageUrl: page.imageUrl,
       pageText: page.text,
-      status: "unsorted",
+      status: "sorting",
     })
     .onConflictDoNothing({ target: items.urlKey })
-    .returning({ id: items.id });
+    .returning({ id: items.id, number: items.number });
   // Two saves of the same link at once: the unique url_key makes the second a duplicate (SPEC §6.10).
   if (!inserted) return { item: (await getCard(eq(items.urlKey, urlKey)))!, duplicate: true };
+  await dispatchSort(inserted.number);
   return { item: (await getCard(eq(items.id, inserted.id)))!, duplicate: false };
 }
 

@@ -36,9 +36,25 @@ try {
   const saved = await api("/api/items", { method: "POST", ...json({ url: URL_A }) });
   assert.equal(saved.status, 201, JSON.stringify(saved.body));
   const item = saved.body.item;
-  assert.ok(item.number > 0 && item.status === "unsorted" && item.bucket === null && item.title !== URL_A, JSON.stringify(item));
+  assert.ok(item.number > 0 && item.status === "sorting" && item.bucket === null && item.title !== URL_A, JSON.stringify(item));
   assert.equal(item.domain, "en.wikipedia.org");
-  ok(`save → 201 #${item.number} "${item.title}"`);
+  ok(`save → 201 #${item.number} "${item.title}" (sorting)`);
+  // The move/filter steps below need a settled card; locally no agent runs, so settle it the way the stuck rule would.
+  await sql`update items set status = 'unsorted', sorted_at = now() where id = ${item.id}`;
+
+  const shortcut = (data, key = process.env.SHORTCUT_API_KEY) =>
+    api("/api/save", { method: "POST", headers: { "x-api-key": key, cookie: "" }, ...json(data) });
+  assert.equal((await shortcut({ url: URL_A }, "wrong-key")).status, 401);
+  const noLink = await shortcut({ url: "just words, no link" });
+  assert.equal(noLink.status, 400);
+  assert.equal(noLink.body.message, "No link found");
+  const dupShortcut = await shortcut({ url: `Look at this ${URL_A} nice` });
+  assert.equal(dupShortcut.status, 200);
+  assert.equal(dupShortcut.body.message, `Already saved #${item.number} · Unsorted`);
+  const newShortcut = await shortcut({ url: `https://en.wikipedia.org/wiki/Hyperlink?pcflow=${RUN}` });
+  assert.equal(newShortcut.status, 201);
+  assert.equal(newShortcut.body.message, `Saved #${newShortcut.body.number}`);
+  ok("/api/save (Shortcut): 401 wrong key, 400 no link, duplicate from text, new → Saved #N");
 
   const dup = await api("/api/items", { method: "POST", ...json({ url: URL_DUP }) });
   assert.equal(dup.status, 200);
@@ -73,7 +89,7 @@ try {
   assert.ok(!unsorted.some((i) => i.id === item.id));
   ok("bucket filter shows it, Unsorted does not");
 
-  const hit = (await api(`/api/items?q=pcflow%3D${RUN}`)).body.items;
+  const hit = (await api(`/api/items?q=Bookmark_(digital)%3Fpcflow%3D${RUN}`)).body.items;
   assert.ok(hit.length === 1 && hit[0].id === item.id, "search by url");
   const page = (await api("/api/items?q=bookmark")).body.items;
   assert.ok(page.some((i) => i.id === item.id), "search by title/page text");

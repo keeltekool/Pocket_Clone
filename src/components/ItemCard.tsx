@@ -79,7 +79,7 @@ export function ItemCard({ item, index, buckets, highlight, onCopy, onMove, onDe
           title="Delete"
           aria-label={`Delete #${item.number}`}
           onClick={onDelete}
-          className="delete-btn hidden size-9 shrink-0 cursor-pointer items-center justify-center rounded-sm text-ink-faint opacity-0 transition-all duration-200 ease-out group-hover:opacity-100 hover:scale-110 hover:bg-danger-soft hover:text-danger focus-visible:opacity-100 active:scale-95 md:flex"
+          className="delete-btn hidden size-9 shrink-0 cursor-pointer items-center justify-center rounded-sm text-ink-faint opacity-0 transition-all duration-200 ease-out group-hover:opacity-100 hover:scale-110 hover:bg-danger-soft hover:text-danger focus-visible:opacity-100 active:scale-95 md:flex [@media(hover:none)]:opacity-100"
         >
           <IconTrash />
         </button>
@@ -94,18 +94,12 @@ function BucketLabel({ item, buckets, onMove, onDelete }: { item: Card; buckets:
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(ref, open, () => setOpen(false));
 
-  if (item.status === "sorting")
-    return (
-      <span className="card-bucket inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm px-1 py-1 text-micro text-ink-faint">
-        <span className="size-3 animate-spin rounded-full border-[1.5px] border-cream-dark border-t-terracotta" />
-        Sorting…
-      </span>
-    );
-
+  const sorting = item.status === "sorting";
   const pick = (id: string | null) => {
     setOpen(false);
     if ((item.bucket?.id ?? null) !== id) onMove(id);
   };
+  // While Sorting… there is nothing to move; on phones the chip still opens so the link can be deleted.
   return (
     <div ref={ref} className="relative min-w-0" data-open={open || undefined}>
       <button
@@ -113,23 +107,30 @@ function BucketLabel({ item, buckets, onMove, onDelete }: { item: Card; buckets:
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="card-bucket-btn flex max-w-[160px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-sm border border-cream-dark bg-cream px-2 py-1 text-micro text-ink-muted transition-all duration-150 ease-out hover:border-ink-faint hover:bg-cream-dark md:max-w-[200px]"
+        disabled={sorting ? undefined : false}
+        className={`card-bucket-btn flex max-w-[160px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-sm px-2 py-1 text-micro transition-all duration-150 ease-out md:max-w-[200px] ${
+          sorting ? "text-ink-faint md:pointer-events-none" : "border border-cream-dark bg-cream text-ink-muted hover:border-ink-faint hover:bg-cream-dark"
+        }`}
       >
-        <IconFolder className="shrink-0" />
+        {sorting ? <span className="size-3 animate-spin rounded-full border-[1.5px] border-cream-dark border-t-terracotta" /> : <IconFolder className="shrink-0" />}
         <span className="card-bucket truncate">{cardLabel(item)}</span>
-        <IconChevron size={10} className="shrink-0" />
+        {!sorting && <IconChevron size={10} className="shrink-0" />}
       </button>
       {open && (
         <Menu className="absolute top-[calc(100%+4px)] left-0 max-h-[280px] overflow-y-auto md:right-0 md:left-auto">
-          <MenuItem className="bucket-option" selected={!item.bucket} onClick={() => pick(null)}>
-            Unsorted
-          </MenuItem>
-          {buckets.map((b) => (
-            <MenuItem key={b.id} className="bucket-option" selected={item.bucket?.id === b.id} onClick={() => pick(b.id)}>
-              {b.name}
-            </MenuItem>
-          ))}
-          <div className="my-1 h-px bg-cream-dark md:hidden" />
+          {!sorting && (
+            <>
+              <MenuItem className="bucket-option" selected={!item.bucket} onClick={() => pick(null)}>
+                Unsorted
+              </MenuItem>
+              {buckets.map((b) => (
+                <MenuItem key={b.id} className="bucket-option" selected={item.bucket?.id === b.id} onClick={() => pick(b.id)}>
+                  {b.name}
+                </MenuItem>
+              ))}
+              <div className="my-1 h-px bg-cream-dark md:hidden" />
+            </>
+          )}
           <MenuItem className="delete-option md:hidden" danger icon={<IconTrash size={14} />} onClick={() => { setOpen(false); onDelete(); }}>
             Delete link
           </MenuItem>

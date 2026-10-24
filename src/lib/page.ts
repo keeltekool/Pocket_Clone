@@ -22,7 +22,12 @@ export const domainOf = (url: string) => new URL(url).hostname.replace(/^www\./,
 export function firstUrl(text: string): string | null {
   const m = String(text).match(/https?:\/\/[^\s<>"'`]+/i);
   if (!m) return null;
-  const candidate = m[0].replace(/[.,;:!?)\]]+$/, "");
+  let candidate = m[0].replace(/[.,;:!?]+$/, "");
+  // A closing bracket is part of the link when it balances one inside it (Wikipedia's `Bookmark_(digital)`),
+  // and surrounding text when it does not (`(see https://a.ee/x)`).
+  const count = (s: string, ch: string) => s.split(ch).length - 1;
+  while (/[)\]]$/.test(candidate) && count(candidate, candidate.endsWith(")") ? ")" : "]") > count(candidate, candidate.endsWith(")") ? "(" : "["))
+    candidate = candidate.slice(0, -1).replace(/[.,;:!?]+$/, "");
   try {
     return new URL(candidate).href;
   } catch {

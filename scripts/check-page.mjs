@@ -17,6 +17,8 @@ assert.equal(normalizeUrl("https://www.host.ee/x?utm_source=a#top"), normalizeUr
 assert.equal(firstUrl("Look at this https://a.ee/x ok"), "https://a.ee/x");
 assert.equal(firstUrl("Vaata: https://a.ee/x?y=1, täitsa hea."), "https://a.ee/x?y=1");
 assert.equal(firstUrl("no link here"), null);
+assert.equal(firstUrl("https://en.wikipedia.org/wiki/Bookmark_(digital)"), "https://en.wikipedia.org/wiki/Bookmark_(digital)", "balanced bracket kept");
+assert.equal(firstUrl("(see https://a.ee/x)."), "https://a.ee/x", "unbalanced bracket dropped");
 console.log("normalizeUrl + firstUrl: ok");
 
 const page = await fetchPage("https://www.dokobit.com/et/blog/kuidas-kasutada-digitemplit-naited-reaalsest-elust");

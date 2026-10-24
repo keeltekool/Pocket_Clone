@@ -3,15 +3,20 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { ItemCard } from "./ItemCard";
 import { MobileSheet } from "./MobileSheet";
 import { Sidebar, viewName } from "./Sidebar";
-import { cardLabel, sameView, type BucketRow, type Card, type View } from "./types";
+import { SuggestionStrip } from "./SuggestionStrip";
+import { cardLabel, type BucketRow, type Card, type Suggestion, type View } from "./types";
 import { Button, EmptyState, GhostButton, IconChevron, IconClose, IconSearch, Spinner, TextField } from "./ui";
 
-export type InitialData = { items: Card[]; buckets: BucketRow[] };
+export type InitialData = { items: Card[]; buckets: BucketRow[]; suggestions: Suggestion[] };
 const POLL_MS = 4_000;
+const RESORT_POLL_MS = 5 * 60_000; // after a bucket is created the agent moves links for a while
 
 export function Main({ initial, initialView, onExpired }: { initial: InitialData | null; initialView: View; onExpired: () => void }) {
   const [items, setItems] = useState<Card[] | null>(initial?.items ?? null);
   const [buckets, setBuckets] = useState<BucketRow[]>(initial?.buckets ?? []);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>(initial?.suggestions ?? []);
+  const [prefill, setPrefill] = useState<{ name: string; suggestionId: string | null } | null>(null);
+  const [pollUntil, setPollUntil] = useState(0);
   const [view, setView] = useState<View>(initialView);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Card[] | null>(null);
@@ -45,10 +50,11 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   // After a fresh login there is no server-rendered data yet.
   useEffect(() => {
     if (items) return;
-    Promise.all([api("/api/items").then((r) => r.json()), api("/api/buckets").then((r) => r.json())])
-      .then(([i, b]) => {
+    Promise.all([api("/api/items"), api("/api/buckets"), api("/api/suggestions")].map((p) => p.then((r) => r.json())))
+      .then(([i, b, s]) => {
         setItems(i.items);
         setBuckets(b.buckets);
+        setSuggestions(s.suggestions);
       })
       .catch(() => {});
   }, [items, api]);
@@ -79,21 +85,25 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     };
   }, [q, api]);
 
-  // While any card is Sorting…, pull changed items every 4 s (SPEC §4.2 live updates).
+  // While any card is Sorting… (or for 5 min after a bucket was created), pull changed items and open suggestions
+  // every 4 s (SPEC §4.2 live updates).
   const sorting = !!items?.some((i) => i.status === "sorting");
+  const polling = sorting || Date.now() < pollUntil;
   useEffect(() => {
-    if (!sorting) return;
+    if (!polling) return;
     let since = new Date(Date.now() - 10_000).toISOString();
     const t = setInterval(async () => {
       try {
-        const r = await api(`/api/items?changedSince=${encodeURIComponent(since)}`);
+        const [r, s] = await Promise.all([api(`/api/items?changedSince=${encodeURIComponent(since)}`), api("/api/suggestions")]);
         const { items: changed } = (await r.json()) as { items: Card[] };
         since = new Date(Date.now() - 1_000).toISOString();
         if (changed.length) setItems((prev) => merge(prev ?? [], changed));
+        setSuggestions((await s.json()).suggestions);
+        if (Date.now() >= pollUntil && !changed.some((c) => c.status === "sorting")) setPollUntil((p) => p); // re-evaluates `polling`
       } catch {}
     }, POLL_MS);
     return () => clearInterval(t);
-  }, [sorting, api]);
+  }, [polling, pollUntil, api]);
 
   const inView = (c: Card) =>
     view.kind === "all" ? true : view.kind === "unsorted" ? c.status === "unsorted" : c.bucket?.id === view.id;
@@ -141,60 +151,94 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     }
   }
 
-  async function move(item: Card, bucketId: string | null) {
-    const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ bucketId }) });
-    if (!r.ok) return show("Couldn't move. Try again.");
-    const { item: updated } = await r.json();
-    setItems((prev) => merge(prev ?? [], [updated]));
-  }
+  // Every card edit applies to the full list and to the current search results alike.
+  const patchCards = (fn: (c: Card) => Card | null) => {
+    const apply = (list: Card[]) => list.flatMap((c) => { const n = fn(c); return n ? [n] : []; });
+    setItems((prev) => (prev ? apply(prev) : prev));
+    setResults((prev) => (prev ? apply(prev) : prev));
+  };
+  // Runs an action; a lost session is handled by `api` (login screen), anything else becomes a toast.
+  const attempt = (fn: () => Promise<void>, failure: string) =>
+    fn().catch((err) => { if ((err as Error).message !== "Session expired") show(failure); });
 
-  async function remove(item: Card) {
-    const r = await api(`/api/items/${item.id}`, { method: "DELETE" });
-    if (!r.ok && r.status !== 404) return show("Couldn't delete. Try again.");
-    setItems((prev) => (prev ?? []).filter((i) => i.id !== item.id));
-    setResults((prev) => prev?.filter((i) => i.id !== item.id) ?? null);
-    show(`Deleted #${item.number}`);
-  }
+  const move = (item: Card, bucketId: string | null) =>
+    attempt(async () => {
+      const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ bucketId }) });
+      if (!r.ok) throw new Error();
+      const { item: updated } = (await r.json()) as { item: Card };
+      patchCards((c) => (c.id === updated.id ? updated : c));
+    }, "Couldn't move. Try again.");
 
+  const remove = (item: Card) =>
+    attempt(async () => {
+      const r = await api(`/api/items/${item.id}`, { method: "DELETE" });
+      if (!r.ok && r.status !== 404) throw new Error();
+      patchCards((c) => (c.id === item.id ? null : c));
+      show(`Deleted #${item.number}`);
+    }, "Couldn't delete. Try again.");
+
+  // + New bucket, or a suggestion's Create bucket (then the suggestion is marked created). The agent moves matching
+  // Unsorted links afterwards, so the page keeps polling for a while.
   async function createBucket(name: string): Promise<string | null> {
-    const r = await api("/api/buckets", { method: "POST", body: JSON.stringify({ name }) });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) return body.error || "Couldn't create the bucket.";
-    setBuckets((prev) => [...prev, { id: body.bucket.id, name: body.bucket.name }]);
-    return null;
+    const suggestionId = prefill?.suggestionId ?? null;
+    try {
+      const r = await api("/api/buckets", { method: "POST", body: JSON.stringify({ name, suggestionId }) });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) return body.error || "Couldn't create the bucket.";
+      setBuckets((prev) => [...prev, { id: body.bucket.id, name: body.bucket.name }]);
+      if (suggestionId) setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId));
+      setPrefill(null);
+      setPollUntil(Date.now() + RESORT_POLL_MS);
+      return null;
+    } catch (err) {
+      return (err as Error).message === "Session expired" ? null : "Couldn't create the bucket.";
+    }
   }
 
-  async function renameBucket(b: BucketRow) {
-    const name = prompt("Rename bucket:", b.name)?.trim();
-    if (!name || name === b.name) return;
-    const r = await api(`/api/buckets/${b.id}`, { method: "PATCH", body: JSON.stringify({ name }) });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) return show(body.error || "Couldn't rename the bucket.");
-    setBuckets((prev) => prev.map((x) => (x.id === b.id ? { ...x, name: body.bucket.name } : x)));
-    setItems((prev) => (prev ?? []).map((i) => (i.bucket?.id === b.id ? { ...i, bucket: { id: b.id, name: body.bucket.name } } : i)));
+  const dismissSuggestion = (s: Suggestion) =>
+    attempt(async () => {
+      const r = await api(`/api/suggestions/${s.id}/dismiss`, { method: "POST" });
+      if (!r.ok && r.status !== 404) throw new Error();
+      setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+    }, "Couldn't dismiss. Try again.");
+
+  // Create bucket from the strip: the new-bucket field opens pre-filled (sidebar, or the sheet on phones).
+  function startFromSuggestion(s: Suggestion) {
+    setPrefill({ name: s.name, suggestionId: s.id });
+    if (window.matchMedia("(max-width: 767px)").matches) setSheetOpen(true);
   }
 
-  async function deleteBucket(b: BucketRow) {
-    const n = counts.bucket(b.id);
-    if (!confirm(`Delete "${b.name}"? Its ${n} ${n === 1 ? "link moves" : "links move"} to Unsorted.`)) return;
-    const r = await api(`/api/buckets/${b.id}`, { method: "DELETE" });
-    if (!r.ok) return show("Couldn't delete the bucket.");
-    setBuckets((prev) => prev.filter((x) => x.id !== b.id));
-    setItems((prev) => (prev ?? []).map((i) => (i.bucket?.id === b.id ? { ...i, bucket: null, status: "unsorted" } : i)));
-    if (view.kind === "bucket" && view.id === b.id) setView({ kind: "all" });
-  }
+  const renameBucket = (b: BucketRow) =>
+    attempt(async () => {
+      const name = prompt("Rename bucket:", b.name)?.trim();
+      if (!name || name === b.name) return;
+      const r = await api(`/api/buckets/${b.id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) return show(body.error || "Couldn't rename the bucket.");
+      setBuckets((prev) => prev.map((x) => (x.id === b.id ? { ...x, name: body.bucket.name } : x)));
+      patchCards((c) => (c.bucket?.id === b.id ? { ...c, bucket: { id: b.id, name: body.bucket.name } } : c));
+    }, "Couldn't rename the bucket.");
 
-  async function logout() {
-    await fetch("/api/auth", { method: "DELETE" });
-    onExpired();
-  }
+  const deleteBucket = (b: BucketRow) =>
+    attempt(async () => {
+      const n = counts.bucket(b.id);
+      if (!confirm(`Delete "${b.name}"? Its ${n} ${n === 1 ? "link moves" : "links move"} to Unsorted.`)) return;
+      const r = await api(`/api/buckets/${b.id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setBuckets((prev) => prev.filter((x) => x.id !== b.id));
+      patchCards((c) => (c.bucket?.id === b.id ? { ...c, bucket: null, status: "unsorted" } : c));
+      if (view.kind === "bucket" && view.id === b.id) setView({ kind: "all" });
+    }, "Couldn't delete the bucket.");
+
+  const logout = () => fetch("/api/auth", { method: "DELETE" }).catch(() => {}).then(onExpired);
 
   function copyNumber(item: Card) {
     navigator.clipboard?.writeText(`pocket #${item.number}`).catch(() => {});
     show(`Copied pocket #${item.number}`);
   }
 
-  const nav = { buckets, counts, view, onView: setView, onCreate: createBucket, onRename: renameBucket, onDelete: deleteBucket };
+  const nav = { buckets, counts, view, onView: setView, onCreate: createBucket, onRename: renameBucket, onDelete: deleteBucket, prefill: prefill?.name ?? null };
+  const suggestion = suggestions[0] ?? null;
 
   return (
     <div className="mx-auto max-w-page animate-main-in p-4 md:px-6 md:pt-6 md:pb-16">
@@ -276,6 +320,10 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
             )}
           </div>
 
+          {suggestion && !q.trim() && (
+            <SuggestionStrip suggestion={suggestion} onCreate={() => startFromSuggestion(suggestion)} onDismiss={() => dismissSuggestion(suggestion)} />
+          )}
+
           {!items ? (
             <div className="flex items-center justify-center gap-2.5 p-6 text-label text-ink-muted">
               <Spinner /> Loading…
@@ -334,5 +382,3 @@ function Empty({ view, buckets, q, total }: { view: View; buckets: BucketRow[]; 
     );
   return <EmptyState title="Nothing here." />;
 }
-
-export { sameView };

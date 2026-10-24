@@ -2,13 +2,14 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { buckets, items } from "@/db/schema";
 import { badRequest } from "@/lib/auth";
-import { cleanName, conflict, duplicateName } from "@/lib/buckets";
+import { cleanName, conflict, duplicateName, isUuid } from "@/lib/buckets";
 
 type Ctx = { params: Promise<{ id: string }> };
 const notFound = () => Response.json({ error: "Not found" }, { status: 404 });
 
 export async function PATCH(req: Request, { params }: Ctx) {
   const { id } = await params;
+  if (!isUuid(id)) return notFound();
   const body = await req.json().catch(() => ({}));
   const name = cleanName(body.name);
   if (!name) return badRequest("Bucket name is required");
@@ -21,11 +22,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
-// Delete bucket (SPEC §6.7): its links become Unsorted and stay there; no automatic re-sort.
+// Delete bucket (SPEC §6.7): its links become Unsorted and stay there; no automatic re-sort. sortedAt is bumped so an
+// open page's changedSince poll picks the change up.
 export async function DELETE(_req: Request, { params }: Ctx) {
   const { id } = await params;
+  if (!isUuid(id)) return notFound();
   const [, deleted] = await db.batch([
-    db.update(items).set({ bucketId: null, status: "unsorted" }).where(eq(items.bucketId, id)),
+    db.update(items).set({ bucketId: null, status: "unsorted", sortedAt: new Date() }).where(eq(items.bucketId, id)),
     db.delete(buckets).where(eq(buckets.id, id)).returning({ id: buckets.id }),
   ]);
   return deleted.length ? Response.json({ ok: true }) : notFound();
