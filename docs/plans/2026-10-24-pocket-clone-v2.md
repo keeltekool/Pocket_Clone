@@ -131,7 +131,7 @@ Claude Code returns the article.
   - Read before coding: `claude-api` skill → `typescript/managed-agents/README.md` and `shared/managed-agents-core.md`
     (§ Session budgets) for SDK 1.3 names.
   - Proof: `npx tsx --env-file=.env.local scripts/agent-sync.ts` prints the three IDs; re-run reports "ok" (idempotent).
-- [ ] **Task 2.3 — Dispatch + polling + stuck retry**
+- [x] **Task 2.3 — Dispatch + polling + stuck retry**
   - Files: `src/lib/sorter.ts`: `dispatchSort(number: number): Promise<void>` and `dispatchBucketCreated(name: string)`
     (sessions.create with agent, environment, vault, $1 budget; one `user.message`; store `sortSessionId`; increment
     `sortAttempts`; never awaits the event stream). `saveLink` sets `status: "sorting"` and calls `dispatchSort`.
@@ -139,7 +139,11 @@ Claude Code returns the article.
   - UI: card label `Sorting…`; page polls `changedSince` every 4 s while any visible card is sorting.
   - Proof: save 3 real links (marker): Dokobit digitempel article → `eSign & eID`; a cv.ee job ad → `Jobs`; a recipe page
     → `Unsorted`. Each within 5 min. Record each session's `list_cost` here (feeds the spec's cost estimate).
-- [ ] **Task 2.4 — Claude Code registration**
+  - **Proof ran on prod 24.10 20:58 (`scripts/check-agent.mjs`):** Dokobit → eSign & eID in 6 s ($0.06); Work in Estonia
+    jobs page (stood in for the cv.ee ad) → Jobs in 7 s ($0.03); Allrecipes pancakes → Unsorted in 9 s ($0.04).
+    Cost per sort $0.03–0.06, average $0.04 (spec estimated $0.20–0.50). `claude -p "pocket #103"` returned the Dokobit
+    title and bucket through the MCP server.
+- [x] **Task 2.4 — Claude Code registration**
   - `claude mcp add --scope user --transport http pocket https://pocket-clone-virid.vercel.app/api/mcp --header
     "Authorization: Bearer <MCP_TOKEN>"` (command built from `.env.local`, token not echoed). If the harness blocks the
     settings change, log it under Blocked with the exact command for the owner.
@@ -158,7 +162,7 @@ Owner sees: when Unsorted gathers a topic, a suggestion strip appears; creating 
   - Design: new UI element → `impeccable` craft floor inside the existing tokens (no new visual language).
   - `POST /api/buckets { name, suggestionId? }` marks the suggestion `created` and calls `dispatchBucketCreated(name)`;
     `+ New bucket` calls it too.
-- [ ] **Task 3.2 — Agent rules for suggestions + re-sort**
+- [x] **Task 3.2 — Agent rules for suggestions + re-sort**
   - `agent/sorter.md` rules 4–5 (SPEC §7.3); re-run `agent-sync.ts`.
   - Proof: insert 3 marker items about one topic no bucket covers (e.g. three EUDI wallet pages), dispatch → a suggestion
     appears; Create bucket → the 3 items move into it; Dismiss path hides it and the name is not suggested again.
@@ -243,8 +247,15 @@ chat, Chrome extension, scheduled agent runs, bulk select.
 
 ## Blocked
 
-- **Prod-only proofs (Tasks 2.3, 2.4, 3.2):** code done; the real agent sorting 3 links with `list_cost` recorded,
-  `claude mcp list` → `pocket ✓ Connected`, `claude -p "pocket #N"`, and the rule-5 move run right after the first ship.
-- **Vercel deploy cap (24.10, 10:30 UTC):** the account had 109 deployments in the rolling 24 h (Hobby cap 100). The
+(nothing open — history below)
+
+- **Prod-only proofs (Tasks 2.3, 2.4, 3.2):** resolved 24.10 20:48–21:10 local after the ship (dpl_HLDN5Gi3nbuW8LUBsCbr9rhDQVsA,
+  `x-vercel-id` arn1::fra1): `check-agent.mjs` (3 links filed in 6–9 s, $0.03–0.06 each), `claude mcp list` →
+  `pocket ✔ Connected`, `claude -p "pocket #103"` returned the Dokobit title + bucket, `check-mcp.mjs` 9/9 on prod,
+  `check-ui-flows.mjs` 40/40 on prod (real agent filed the save; rule 5 moved the 3 EUDI links into the new bucket).
+  The first prod flow run failed 2 steps on test assumptions (the bookmarklet step ran on the main page, whose URL
+  rewrite dropped the marker; the sheet step assumed the phone's link stays Unsorted) — test fixes, no app change, no
+  revert; one unmarked test row (#100, the site root) was removed by hand.
+- **Vercel deploy cap (24.10, 10:30 UTC), resolved 20:45 local (73 in window):** the account had 109 deployments in the rolling 24 h (Hobby cap 100). The
   window drops to ≤100 at 16:53 UTC and ≤90 at 17:20 UTC. Gate ships wait for that; the build continues locally
   (Phases 2–4 proofs that need prod, i.e. real Managed Agent sessions against `/api/mcp`, run right after the first ship).

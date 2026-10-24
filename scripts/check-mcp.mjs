@@ -48,7 +48,15 @@ try {
   const saved = await fetch(`${BASE}/api/save`, { method: "POST", headers: { "content-type": "application/json", "x-api-key": process.env.SHORTCUT_API_KEY }, body: JSON.stringify({ url: URL_A }) }).then((r) => r.json());
   const number = saved.number;
   assert.ok(number > 0, JSON.stringify(saved));
-  await sql`update items set status = 'unsorted', sorted_at = now() where number = ${number}`;
+  // On the deployed app the real agent sorts this save; let it finish before the tool is driven by hand.
+  if (!/localhost|127\.0\.0\.1/.test(BASE)) {
+    for (let i = 0; i < 150; i++) {
+      const [row] = await sql`select status from items where number = ${number}`;
+      if (row.status !== "sorting") break;
+      await new Promise((r) => setTimeout(r, 2_000));
+    }
+  }
+  await sql`update items set status = 'unsorted', bucket_id = null, sorted_by = 'agent', sorted_at = now() where number = ${number}`;
 
   const got = (await call("pocket_get_item", { item: `#${number}`, maxChars: 20_000 })).data;
   assert.ok(/digitempl/i.test(got.title) && got.pageText.length > 1000 && got.bucket === "Unsorted", JSON.stringify(got).slice(0, 200));

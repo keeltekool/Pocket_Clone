@@ -24,7 +24,8 @@ const MOBILE_URL = `https://en.wikipedia.org/wiki/Hyperlink?pcflow=${RUN}`;
 const BUCKET = `pcflow-${RUN}`;
 const RENAMED = `${BUCKET}-renamed`;
 const SUGGEST = `pcflow-${RUN}-s`;
-const ADD_URL = `${BASE}/?pcflow=${RUN}&page=bookmarklet`; // the page the bookmarklet is clicked on
+// The page the bookmarklet is clicked on: /setup keeps its query string (the main view rewrites its URL on load).
+const ADD_URL = `${BASE}/setup?pcflow=${RUN}&page=bookmarklet`;
 // login_failures rows from this run are removed at the end. Kept as DB text: a JS Date goes out with the local +03:00
 // offset, which a timestamp-without-zone column drops, shifting the cutoff three hours ahead.
 const [{ runStart }] = await sql`select now()::timestamp::text as "runStart"`;
@@ -374,9 +375,8 @@ try {
   await step("bookmarklet on a page → popup saves, reports Saved #N · sorting…, closes itself", async () => {
     // The real entry point: the javascript: href from /setup, run on a page whose URL carries the marker. The
     // bookmarklet always targets the public site, so locally it is rewritten to this server.
-    await page.goto(`${BASE}/setup`, { waitUntil: "load" });
+    await page.goto(ADD_URL, { waitUntil: "load" });
     const href = (await page.getAttribute("#bookmarklet", "href")).replace(SITE, BASE);
-    await page.goto(`${BASE}/?pcflow=${RUN}&page=bookmarklet`, { waitUntil: "load" });
     const [popup] = await Promise.all([ctx.waitForEvent("page"), page.evaluate(href.slice("javascript:".length))]);
     await popup.locator("#add-status:has-text(\"Saved #\")").waitFor({ timeout: 20_000 });
     const text = await popup.locator("#add-status").innerText();
@@ -473,13 +473,16 @@ try {
     expect(w <= 375, `page is ${w}px wide`);
   });
 
-  await step("bucket sheet opens, filters to Unsorted, closes", async () => {
+  await step("bucket sheet opens, filters to the card's bucket, closes", async () => {
+    // On prod the agent may already have filed the phone's link; the filter follows whatever label the card carries.
+    const label = (await card(m.page, MOBILE_URL).locator(".card-bucket").first().innerText()).trim();
+    const target = label === "Sorting…" ? "All links" : label;
     await m.page.click("#mobile-filter-btn");
     await m.page.locator("#mobile-sheet[data-open]").waitFor({ timeout: 5_000 });
     await m.page.screenshot({ path: join(OUT, "375-sheet.png") });
-    await m.page.click('#mobile-sheet .sheet-item:has-text("Unsorted")');
+    await m.page.locator(`#mobile-sheet .sheet-item:has-text("${target}")`).first().click();
     await m.page.locator("#mobile-sheet[data-open]").waitFor({ state: "detached", timeout: 5_000 });
-    expect((await m.page.locator("#mobile-filter-name").innerText()) === "Unsorted", "filter name did not change");
+    expect((await m.page.locator("#mobile-filter-name").innerText()) === target, `filter name is not ${target}`);
     await card(m.page, MOBILE_URL).waitFor({ state: "visible", timeout: 5_000 });
     await m.page.click("#mobile-filter-btn");
     await m.page.click("#mobile-sheet .sheet-close");
