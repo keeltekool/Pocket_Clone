@@ -4,7 +4,7 @@ import { BucketMenu, NewBucket, type NavProps } from "./Sidebar";
 import { sameView, type BucketRow, type View } from "./types";
 import { Count, IconClose } from "./ui";
 
-// Phone filter (SPEC §4.5): bottom sheet "Filter by bucket" with All links, Unsorted and the buckets; tap selects and
+// Phone filter (SPEC §4.5): bottom sheet "Filter by bucket" with All links, Unsorted, Favourites and the buckets; tap selects and
 // closes. Bucket ⋮ and + New bucket live here too, since phones have no sidebar.
 export function MobileSheet({ open, onClose, buckets, counts, view, onView, onCreate, onRename, onDelete, prefill, onPrefillDone }: NavProps & { open: boolean; onClose: () => void }) {
   // Runs on open/close only: Main re-renders every poll tick with a fresh onClose.
@@ -60,6 +60,7 @@ export function MobileSheet({ open, onClose, buckets, counts, view, onView, onCr
         <div className="max-h-[calc(80vh-72px)] overflow-y-auto p-3 pb-8">
           {row("All links", counts.all, { kind: "all" })}
           {row("Unsorted", counts.unsorted, { kind: "unsorted" })}
+          {row("Favourites", counts.favourites, { kind: "favourites" })}
           <div className="mx-4 my-2 h-px bg-cream-dark" />
           {buckets.map((b) => row(b.name, counts.bucket(b.id), { kind: "bucket", id: b.id }, b))}
           <NewBucket idPrefix="sheet-new-bucket" onCreate={onCreate} prefill={open && prefill?.target === "sheet" ? prefill : null} onDone={onPrefillDone} />

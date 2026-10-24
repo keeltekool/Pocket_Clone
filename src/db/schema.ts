@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 
 // Single owner: no user column anywhere. Created by scripts/migrate-v2.mjs (explicit SQL, same shape as here).
 
@@ -33,6 +33,8 @@ export const items = pgTable("items", {
   sortedBy: sortedBy("sorted_by"),
   sortAttempts: integer("sort_attempts").notNull().default(0),
   sortSessionId: text("sort_session_id"),
+  // Owner's heart (SPEC §4.2, v2.1); the agent never sets it.
+  favourite: boolean("favourite").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   sortedAt: timestamp("sorted_at"),
 });

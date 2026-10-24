@@ -16,6 +16,7 @@ const cardColumns = {
   imageUrl: items.imageUrl,
   status: items.status,
   sortedBy: items.sortedBy,
+  favourite: items.favourite,
   createdAt: items.createdAt,
   bucketId: items.bucketId,
 };
@@ -32,12 +33,13 @@ const toCard = ({ bucketId, bucketName, createdAt, ...rest }: Row): Card => ({
 
 type ListFilter = { bucket?: string | null; q?: string | null; changedSince?: string | null; limit?: number };
 
-// Newest first. `bucket` is a bucket id or "unsorted"; `q` matches title, domain, URL and page text;
+// Newest first. `bucket` is a bucket id, "unsorted" or "favourites"; `q` matches title, domain, URL and page text;
 // `changedSince` returns links created or (re)sorted after that instant (the Sorting… poll).
 // ponytail: ILIKE scans are fine for a few hundred rows; add a trigram/FTS index past ~5,000 items.
 export async function listItems(f: ListFilter = {}): Promise<Card[]> {
   const where: SQL[] = [];
   if (f.bucket === "unsorted") where.push(eq(items.status, "unsorted"));
+  else if (f.bucket === "favourites") where.push(eq(items.favourite, true));
   else if (f.bucket) where.push(isUuid(f.bucket) ? eq(items.bucketId, f.bucket) : sql`false`);
   if (f.q) {
     const needle = `%${f.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -101,6 +103,12 @@ export async function fileItem(id: string, bucketId: string | null, by: "owner" 
     .set({ bucketId, status: bucketId ? "sorted" : "unsorted", sortedBy: by, sortedAt: new Date() })
     .where(and(eq(items.id, id), guard))
     .returning({ id: items.id });
+  return written.length > 0;
+}
+
+// Owner's heart (SPEC §6.6a): sets the given value, touches nothing else (status, bucket, sortedBy stay).
+export async function setFavourite(id: string, favourite: boolean): Promise<boolean> {
+  const written = await db.update(items).set({ favourite }).where(eq(items.id, id)).returning({ id: items.id });
   return written.length > 0;
 }
 

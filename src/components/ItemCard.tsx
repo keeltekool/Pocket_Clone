@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { favicon, timeAgo } from "@/lib/format";
 import { cardLabel, type BucketRow, type Card } from "./types";
-import { IconChevron, IconFolder, IconTrash, Menu, MenuItem, useDismiss } from "./ui";
+import { HeartButton, IconChevron, IconFolder, IconTrash, Menu, MenuItem, useDismiss } from "./ui";
 
 type Props = {
   item: Card;
@@ -12,12 +12,13 @@ type Props = {
   onCopy: () => void;
   onMove: (bucketId: string | null) => void;
   onDelete: () => void;
+  onFavourite: () => void;
 };
 
-// One saved link (SPEC §4.2): image, title, domain · date, #N (copies `pocket #N`), bucket label menu, delete.
+// One saved link (SPEC §4.2): image, title, domain · date, #N (copies `pocket #N`), heart, bucket label menu, delete.
 // One actions row, placed by the grid: on phones (SPEC §10) under the meta line, with delete inside the label menu;
 // from md up in a third column with the trash icon.
-export function ItemCard({ item, index, buckets, highlight, onCopy, onMove, onDelete }: Props) {
+export function ItemCard({ item, index, buckets, highlight, onCopy, onMove, onDelete, onFavourite }: Props) {
   const img = item.imageUrl ?? favicon(item.domain);
   return (
     <article
@@ -73,6 +74,13 @@ export function ItemCard({ item, index, buckets, highlight, onCopy, onMove, onDe
         >
           #{item.number}
         </button>
+        {/* Outline heart: hover/focus-only on desktop pointers, like delete; a filled heart and touch always show it. */}
+        <HeartButton
+          on={item.favourite}
+          number={item.number}
+          onClick={onFavourite}
+          className={item.favourite ? "" : "md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 [@media(hover:none)]:opacity-100"}
+        />
         <BucketLabel item={item} buckets={buckets} onMove={onMove} onDelete={onDelete} />
         <button
           type="button"

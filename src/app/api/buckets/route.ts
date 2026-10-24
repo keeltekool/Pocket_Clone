@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { bucketSuggestions, buckets } from "@/db/schema";
-import { cleanName, duplicateName, isUuid } from "@/lib/buckets";
+import { cleanName, duplicateName, isUuid, reservedName } from "@/lib/buckets";
 import { badRequest, conflict } from "@/lib/http";
 import { bucketCounts } from "@/lib/items";
 import { dispatchBucketCreated } from "@/lib/sorter";
@@ -16,6 +16,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const name = cleanName(body.name);
   if (!name) return badRequest("Bucket name is required");
+  if (reservedName(name)) return badRequest("That name is reserved.");
   let bucket: { id: string; name: string };
   try {
     [bucket] = await db.insert(buckets).values({ name }).returning({ id: buckets.id, name: buckets.name });

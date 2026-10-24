@@ -100,6 +100,27 @@ try {
   assert.ok((await api(`/api/items?changedSince=${encodeURIComponent(since)}`)).body.items.some((i) => i.id === item.id));
   ok("changedSince returns the fresh item");
 
+  // v2.1 Favourite (SPEC §6.6a, §8): the new value, nothing else changes; exactly one of bucketId / favourite.
+  const hearted = await api(`/api/items/${item.id}`, { method: "PATCH", ...json({ favourite: true }) });
+  assert.equal(hearted.status, 200, JSON.stringify(hearted.body));
+  const h = hearted.body.item;
+  assert.ok(h.favourite === true && h.status === "sorted" && h.bucket?.id === bucket.id && h.sortedBy === "owner", JSON.stringify(h));
+  assert.ok((await api("/api/items?bucket=favourites")).body.items.some((i) => i.id === item.id), "favourites filter");
+  assert.equal((await api(`/api/items/${item.id}`, { method: "PATCH", ...json({ favourite: true, bucketId: null }) })).status, 400);
+  assert.equal((await api(`/api/items/${item.id}`, { method: "PATCH", ...json({}) })).status, 400);
+  assert.equal((await api(`/api/items/${item.id}`, { method: "PATCH", ...json({ favourite: "yes" }) })).status, 400);
+  const unhearted = (await api(`/api/items/${item.id}`, { method: "PATCH", ...json({ favourite: false }) })).body.item;
+  assert.ok(unhearted.favourite === false && unhearted.bucket?.id === bucket.id, JSON.stringify(unhearted));
+  ok("favourite on → in ?bucket=favourites, bucket/status/sortedBy kept; both/neither/non-boolean → 400; off");
+
+  for (const name of ["favourites", "UNSORTED", " Favourites "]) {
+    const r = await api("/api/buckets", { method: "POST", ...json({ name }) });
+    assert.ok(r.status === 400 && r.body.error === "That name is reserved.", `${name}: ${r.status} ${JSON.stringify(r.body)}`);
+  }
+  const renameReserved = await api(`/api/buckets/${bucket.id}`, { method: "PATCH", ...json({ name: "Favourites" }) });
+  assert.ok(renameReserved.status === 400 && renameReserved.body.error === "That name is reserved.");
+  ok("reserved names: create and rename → 400 That name is reserved.");
+
   const renamed = await api(`/api/buckets/${bucket.id}`, { method: "PATCH", ...json({ name: `${BUCKET}-renamed` }) });
   assert.equal(renamed.body.bucket.name, `${BUCKET}-renamed`);
   ok("rename bucket");

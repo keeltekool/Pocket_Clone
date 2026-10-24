@@ -5,7 +5,7 @@ import { Count, IconDots, IconPencil, IconTrash, Menu, MenuItem, useDismiss } fr
 
 export type NavProps = {
   buckets: BucketRow[];
-  counts: { all: number; unsorted: number; bucket: (id: string) => number };
+  counts: { all: number; unsorted: number; favourites: number; bucket: (id: string) => number };
   view: View;
   onView: (v: View) => void;
   onCreate: (name: string, suggestionId: string | null) => Promise<string | null>;
@@ -18,14 +18,15 @@ export type NavProps = {
 };
 
 export const viewName = (view: View, buckets: BucketRow[]) =>
-  view.kind === "all" ? "All links" : view.kind === "unsorted" ? "Unsorted" : buckets.find((b) => b.id === view.id)?.name ?? "All links";
+  view.kind === "bucket" ? buckets.find((b) => b.id === view.id)?.name ?? "All links" : { all: "All links", unsorted: "Unsorted", favourites: "Favourites" }[view.kind];
 
-// Desktop sidebar (SPEC §3): All links · Unsorted · BUCKETS with counts and a ⋮ menu · + New bucket.
+// Desktop sidebar (SPEC §3): All links · Unsorted · Favourites · BUCKETS with counts and a ⋮ menu · + New bucket.
 export function Sidebar(p: NavProps) {
   return (
     <nav aria-label="Buckets">
       <NavItem label="All links" count={p.counts.all} active={p.view.kind === "all"} onClick={() => p.onView({ kind: "all" })} view="all" />
       <NavItem label="Unsorted" count={p.counts.unsorted} active={p.view.kind === "unsorted"} onClick={() => p.onView({ kind: "unsorted" })} view="unsorted" />
+      <NavItem label="Favourites" count={p.counts.favourites} active={p.view.kind === "favourites"} onClick={() => p.onView({ kind: "favourites" })} view="favourites" />
       <div className="mx-4 my-2 h-px bg-cream-dark" />
       <div className="px-4 pt-4 pb-2 text-overline uppercase text-ink-faint">Buckets</div>
       {p.buckets.map((b) => (

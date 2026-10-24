@@ -4,3 +4,5 @@ export const isUuid = (s: unknown) => typeof s === "string" && /^[0-9a-f]{8}-[0-
 export const pgCode = (e: unknown) => (e as { code?: string; cause?: { code?: string } })?.cause?.code ?? (e as { code?: string })?.code;
 // unique_violation from buckets_name_lower_idx (case-insensitive).
 export const duplicateName = (e: unknown) => pgCode(e) === "23505";
+// Sidebar views and MCP `bucket` keywords (SPEC §5, v2.1): a bucket with one of these names would be ambiguous.
+export const reservedName = (name: string) => ["unsorted", "favourites"].includes(name.trim().toLowerCase());

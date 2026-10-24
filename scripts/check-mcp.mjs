@@ -101,6 +101,16 @@ try {
   const lb2 = (await call("pocket_list_buckets", {})).data;
   assert.ok(lb2.suggestions.open.includes(SUGGEST));
   ok("pocket_suggest_bucket: created, duplicate refused, existing bucket refused, listed as open");
+
+  // v2.1: the owner's heart is readable over MCP (never writable); "favourites" is a list keyword and a reserved name.
+  assert.equal((await call("pocket_get_item", { item: `#${number}` })).data.favourite, false);
+  await sql`update items set favourite = true where number = ${number}`;
+  assert.equal((await call("pocket_get_item", { item: `#${number}` })).data.favourite, true);
+  const favs = (await call("pocket_list", { bucket: "Favourites", limit: 300 })).data.items;
+  assert.ok(favs.some((i) => i.number === number), "pocket_list favourites");
+  const reserved = await call("pocket_suggest_bucket", { name: "favourites", reason: "should be refused", itemNumbers: [number] });
+  assert.ok(reserved.isError && reserved.data.error === "reserved_name", JSON.stringify(reserved.data));
+  ok("favourite in pocket_get_item; pocket_list bucket favourites; suggest Favourites → reserved_name");
   console.log(`\ncheck-mcp: ${n} steps passed`);
 } finally {
   await sql`delete from items where url like ${"%pcflow=" + RUN + "%"}`;

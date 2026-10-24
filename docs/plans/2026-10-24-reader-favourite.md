@@ -24,13 +24,13 @@ reserved names), §6.6a, §6.6b, §6.10, §8, §10, §11, §12.
 
 ## Phase 1 — Favourite (heart, Favourites view, API, MCP)
 
-- [ ] **Task 1.1 — Migration + schema**
+- [x] **Task 1.1 — Migration + schema**
   - Files: create `scripts/migrate-v21.mjs` (explicit SQL: `alter table items add column if not exists favourite boolean
     not null default false`); modify `src/db/schema.ts` (`favourite: boolean("favourite").notNull().default(false)`).
   - Proof: `node scripts/migrate-v21.mjs` twice (idempotent), then `select column_name, data_type, column_default from
     information_schema.columns where table_name='items' and column_name='favourite'` → one row `boolean`, `false`.
     Additive, so the live v2 deploy keeps working (it selects named columns).
-- [ ] **Task 1.2 — Data layer, API, reserved names**
+- [x] **Task 1.2 — Data layer, API, reserved names**
   - Files: `src/lib/items.ts` (`favourite` in `cardColumns` → `Card.favourite: boolean`; `ListFilter.bucket` accepts
     `"favourites"` → `eq(items.favourite, true)`; new `setFavourite(id: string, favourite: boolean): Promise<boolean>`
     that updates only `favourite`); `src/app/api/items/[id]/route.ts` (PATCH: exactly one of `bucketId` / `favourite`
@@ -39,14 +39,14 @@ reserved names), §6.6a, §6.6b, §6.10, §8, §10, §11, §12.
   - Proof: `scripts/check-api.mjs` new steps: PATCH `{favourite:true}` → `item.favourite === true`, `status`/`bucket`/
     `sortedBy` unchanged; `GET /api/items?bucket=favourites` contains it; PATCH with both keys → 400; PATCH
     `{favourite:"yes"}` → 400; POST bucket `favourites` and `UNSORTED` → 400 `That name is reserved.`; rename → 400.
-- [ ] **Task 1.3 — MCP**
+- [x] **Task 1.3 — MCP**
   - Files: `src/app/api/mcp/route.ts`: `pocket_get_item` returns `favourite`; `pocket_list` maps `bucket` `favourites`
     (case-insensitive) to the filter, description names it; `pocket_suggest_bucket` refuses reserved names
     (`fail("reserved_name")`).
   - Proof: `scripts/check-mcp.mjs` new steps: favourite a marker item through the API → `pocket_list {bucket:
     "favourites"}` contains its number; `pocket_get_item` → `favourite: true`; `pocket_suggest_bucket {name:
     "Favourites"}` → isError.
-- [ ] **Task 1.4 — UI: heart on the card, Favourites row, view**
+- [x] **Task 1.4 — UI: heart on the card, Favourites row, view**
   - Files: `src/components/ui.tsx` (`IconHeart({ filled })`); `src/components/types.ts` (`View` gains
     `{ kind: "favourites" }`); `src/components/ItemCard.tsx` (heart button in the actions row after `#N`, prop
     `onFavourite: () => void`); `src/components/Main.tsx` (`favourite(item)` optimistic flip + revert + toast;

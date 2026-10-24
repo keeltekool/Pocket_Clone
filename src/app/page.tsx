@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const authed = hasSession((await cookies()).toString());
   const sp = await searchParams;
-  let view: View = sp.view === "unsorted" ? { kind: "unsorted" } : sp.bucket ? { kind: "bucket", id: sp.bucket } : { kind: "all" };
+  let view: View =
+    sp.view === "unsorted" || sp.view === "favourites" ? { kind: sp.view } : sp.bucket ? { kind: "bucket", id: sp.bucket } : { kind: "all" };
 
   if (!authed) return <Shell authed={false} initial={null} view={view} />;
   await retryStuck(); // a main-view load is the stuck-item check (SPEC §6.4)

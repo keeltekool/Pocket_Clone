@@ -11,7 +11,7 @@ export type Suggestion = { id: string; name: string; itemNumbers: number[]; crea
 // What a suggestion's Create bucket hands to the new-bucket field. `nonce` re-opens the field on a repeat click.
 export type Prefill = { name: string; suggestionId: string; target: "sidebar" | "sheet"; nonce: number };
 
-export type View = { kind: "all" } | { kind: "unsorted" } | { kind: "bucket"; id: string };
+export type View = { kind: "all" } | { kind: "unsorted" } | { kind: "favourites" } | { kind: "bucket"; id: string };
 
 export const sameView = (a: View, b: View) => a.kind === b.kind && (a.kind !== "bucket" || b.kind !== "bucket" || a.id === b.id);
 

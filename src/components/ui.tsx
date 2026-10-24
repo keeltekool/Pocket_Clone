@@ -36,6 +36,27 @@ export const IconDots = ({ size = 16, className }: IconProps) => (
 export const IconSearch = ({ size = 16, className }: IconProps) => (
   <svg {...svg(size, className)}><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
 );
+export const IconHeart = ({ size = 16, className, filled }: IconProps & { filled?: boolean }) => (
+  <svg {...svg(size, className)} fill={filled ? "currentColor" : "none"}>
+    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+  </svg>
+);
+
+/** Favourite toggle (SPEC §4.2, §4.6): outline = off, filled terracotta = on. `className` places it (e.g. hover-only). */
+export function HeartButton({ on, number, onClick, className = "" }: { on: boolean; number: number; onClick: () => void; className?: string }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-label={on ? `Remove #${number} from favourites` : `Add #${number} to favourites`}
+      title={on ? "Remove from favourites" : "Add to favourites"}
+      onClick={onClick}
+      className={`heart-btn flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-sm transition-all duration-150 ease-out hover:bg-terracotta-glow hover:text-terracotta active:scale-90 ${on ? "text-terracotta" : "text-ink-faint"} ${className}`}
+    >
+      <IconHeart filled={on} />
+    </button>
+  );
+}
 
 /** Primary action: solid terracotta, lifts 1px on hover. */
 export function Button({ className = "", ...props }: ComponentProps<"button">) {

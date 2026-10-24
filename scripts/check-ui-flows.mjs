@@ -247,6 +247,89 @@ try {
     expect(Number(await sidebarCount(page, jobsId)) === before + 1, "Jobs count did not grow");
   });
 
+  // ── v2.1 Favourite (SPEC §4.2, §6.6a) ──
+  const heart = (page, url = TEST_URL) => card(page, url).locator(".heart-btn");
+  const opacity = (loc) => loc.evaluate((el) => getComputedStyle(el).opacity);
+  // Hover fades run 150 ms; poll until the value settles instead of reading mid-transition.
+  const expectOpacity = async (loc, want, msg) => {
+    for (let i = 0; i < 20 && (await opacity(loc)) !== want; i++) await new Promise((r) => setTimeout(r, 50));
+    expect((await opacity(loc)) === want, `${msg} (opacity ${await opacity(loc)})`);
+  };
+
+  await step("heart: outline hidden until hover; on → filled, Favourites count +1, kept after reload", async () => {
+    const before = Number(await sidebarCount(page, "favourites"));
+    await page.mouse.move(0, 0);
+    await expectOpacity(heart(page), "0", "outline heart visible without hover on desktop");
+    await card(page).hover();
+    await page.waitForFunction((u) => getComputedStyle([...document.querySelectorAll(".item-card")].find((x) => x.querySelector(`.card-title[href="${u}"]`)).querySelector(".heart-btn")).opacity === "1", TEST_URL, { timeout: 3_000 });
+    await heart(page).click();
+    expect((await heart(page).getAttribute("aria-pressed")) === "true", "heart not pressed");
+    expect((await heart(page).getAttribute("aria-label")) === `Remove #${number} from favourites`, "aria-label");
+    expect(Number(await sidebarCount(page, "favourites")) === before + 1, "Favourites count did not grow");
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(400); // past the 150 ms fade
+    expect((await opacity(heart(page))) === "1", "filled heart hidden without hover");
+    await page.screenshot({ path: join(OUT, "1440-heart.png") });
+    await page.reload({ waitUntil: "load" });
+    await card(page).waitFor({ timeout: 10_000 });
+    expect((await heart(page).getAttribute("aria-pressed")) === "true", "favourite lost on reload");
+  });
+
+  await step("Favourites view: ?view=favourites, only hearted cards, search inside, un-heart removes the card", async () => {
+    await page.click('.sidebar-item[data-view="favourites"]');
+    await page.waitForURL(/\?view=favourites$/, { timeout: 5_000 });
+    await card(page).waitFor({ timeout: 5_000 });
+    const pressed = await page.locator(".item-card .heart-btn").evaluateAll((els) => els.map((e) => e.getAttribute("aria-pressed")));
+    expect(pressed.length > 0 && pressed.every((p) => p === "true"), `non-favourite in the view: ${pressed}`);
+    await page.screenshot({ path: join(OUT, "1440-favourites.png") });
+    await page.reload({ waitUntil: "load" }); // the URL restores the view
+    await card(page).waitFor({ timeout: 10_000 });
+    expect(await page.locator('.sidebar-item[data-view="favourites"].font-semibold').count() === 1, "Favourites not active after reload");
+    await page.fill("#search-input", `pcflow=${RUN}`); // Review focus 2: un-heart inside a search in Favourites
+    await card(page).waitFor({ timeout: 10_000 });
+    await heart(page).click();
+    await card(page).waitFor({ state: "detached", timeout: 5_000 });
+    await page.fill("#search-input", "");
+    if ((await sidebarCount(page, "favourites")) === "0") {
+      await page.locator('text="No favourites yet."').waitFor({ timeout: 5_000 });
+      await page.locator('text="Tap the heart on a link to keep it here."').waitFor({ timeout: 5_000 });
+    }
+    const [row] = await sql`select favourite from items where url = ${TEST_URL}`;
+    expect(row.favourite === false, "un-heart not saved");
+    await page.click('.sidebar-item[data-view="all"]');
+    await card(page).waitFor({ timeout: 5_000 });
+  });
+
+  await step("heart failure flips back with Couldn't update. Try again.", async () => {
+    await page.route("**/api/items/*", (r) => (r.request().method() === "PATCH" ? r.abort() : r.continue()));
+    try {
+      await card(page).hover();
+      await heart(page).click();
+      await toast(page, "Couldn't update. Try again.");
+      expect((await heart(page).getAttribute("aria-pressed")) === "false", "heart stayed on after a failed save");
+    } finally {
+      await page.unroute("**/api/items/*");
+    }
+  });
+
+  // Review focus 1: the live-update poll merges whole cards; a heart clicked while a card is Sorting… must survive it,
+  // also when the card is filed meanwhile.
+  await step("heart on a Sorting… card survives the poll and the filing (Review focus 1)", async () => {
+    const u = `https://en.wikipedia.org/wiki/Favourite_race?pcflow=${RUN}`;
+    await sql`insert into items (url, url_key, title, domain, status, sort_attempts, sorted_at)
+              values (${u}, ${`en.wikipedia.org/wiki/Favourite_race?pcflow=${RUN}`}, 'Favourite race', 'en.wikipedia.org', 'sorting', 1, now())`;
+    await page.reload({ waitUntil: "load" });
+    await card(page, u).hover();
+    await heart(page, u).click();
+    await page.waitForTimeout(9_000); // two poll ticks
+    expect((await heart(page, u).getAttribute("aria-pressed")) === "true", "poll flipped the heart back");
+    await sql`update items set status = 'unsorted', sorted_at = now() where url = ${u}`;
+    await card(page, u).locator('.card-bucket:text-is("Unsorted")').waitFor({ timeout: 15_000 });
+    expect((await heart(page, u).getAttribute("aria-pressed")) === "true", "filing flipped the heart back");
+    await sql`delete from items where url = ${u}`;
+    await page.reload({ waitUntil: "load" });
+  });
+
   await step("create a bucket from the sidebar; duplicate name is refused", async () => {
     await page.click("#new-bucket-btn");
     await page.fill("#new-bucket-input", BUCKET);
@@ -465,7 +548,29 @@ try {
     expect(await c.locator(".card-number").first().isVisible(), "#N hidden on the phone");
     expect(await c.locator(".card-bucket").first().isVisible(), "bucket label hidden on the phone");
     expect((await c.locator(".delete-btn").count()) === 0 || !(await c.locator(".delete-btn").isVisible()), "desktop delete icon shown on the phone");
+    // v2.1: the outline heart is always visible on touch, on the same row as #N and the label (SPEC §10).
+    const boxes = await Promise.all([".card-number", ".heart-btn", ".card-bucket-btn"].map((s) => c.locator(s).first().boundingBox()));
+    expect(boxes.every(Boolean), "a control of the phone row is missing");
+    expect(boxes.every((b) => Math.abs(b.y + b.height / 2 - (boxes[0].y + boxes[0].height / 2)) < 4), `phone row not on one line: ${JSON.stringify(boxes)}`);
+    expect((await opacity(c.locator(".heart-btn"))) === "1", "outline heart hidden on touch");
     await m.page.screenshot({ path: join(OUT, "375-app.png") });
+  });
+
+  await step("heart on the phone → Favourites row in the sheet shows it", async () => {
+    await card(m.page, MOBILE_URL).locator(".heart-btn").tap();
+    expect((await card(m.page, MOBILE_URL).locator(".heart-btn").getAttribute("aria-pressed")) === "true", "heart not pressed on the phone");
+    await m.page.click("#mobile-filter-btn");
+    await m.page.locator("#mobile-sheet[data-open]").waitFor({ timeout: 5_000 });
+    const rows = await m.page.locator("#mobile-sheet .sheet-item").evaluateAll((els) => els.map((e) => e.textContent.trim()));
+    expect(/^Favourites/.test(rows[2] ?? ""), `Favourites is not the third sheet row: ${rows.slice(0, 4).join(" | ")}`);
+    await m.page.locator('#mobile-sheet .sheet-item:has-text("Favourites")').click();
+    await m.page.locator("#mobile-sheet[data-open]").waitFor({ state: "detached", timeout: 5_000 });
+    expect((await m.page.locator("#mobile-filter-name").innerText()) === "Favourites", "filter name is not Favourites");
+    await card(m.page, MOBILE_URL).waitFor({ timeout: 5_000 });
+    await m.page.screenshot({ path: join(OUT, "375-favourites.png") });
+    await m.page.click("#mobile-filter-btn");
+    await m.page.locator('#mobile-sheet .sheet-item:has-text("All links")').click();
+    await m.page.locator("#mobile-sheet[data-open]").waitFor({ state: "detached", timeout: 5_000 });
   });
 
   await step("no sideways scroll at 375", async () => {

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { buckets, items } from "@/db/schema";
-import { cleanName, duplicateName, isUuid } from "@/lib/buckets";
+import { cleanName, duplicateName, isUuid, reservedName } from "@/lib/buckets";
 import { badRequest, conflict, notFound } from "@/lib/http";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -12,6 +12,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const body = await req.json().catch(() => ({}));
   const name = cleanName(body.name);
   if (!name) return badRequest("Bucket name is required");
+  if (reservedName(name)) return badRequest("That name is reserved.");
   try {
     const [bucket] = await db.update(buckets).set({ name }).where(eq(buckets.id, id)).returning({ id: buckets.id, name: buckets.name });
     return bucket ? Response.json({ bucket }) : notFound();

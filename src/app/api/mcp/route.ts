@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { bucketSuggestions, buckets, items } from "@/db/schema";
 import { secretMatches } from "@/lib/auth";
+import { reservedName } from "@/lib/buckets";
 import { bucketLabel } from "@/lib/format";
 import { bucketCounts, fileItem, listItems, type Card } from "@/lib/items";
 import { normalizeUrl } from "@/lib/page";
@@ -49,7 +50,7 @@ const handler = createMcpHandler(
       {
         title: "Get a saved link",
         description:
-          "Full record of one saved link in the owner's Pocket Clone: number, title, URL, domain, bucket, status, sortedBy, savedAt and the page text. `item` is a number (\"58\" or \"#58\") or the link's URL. The page text is cut at `maxChars` (default 60000).",
+          "Full record of one saved link in the owner's Pocket Clone: number, title, URL, domain, bucket, status, sortedBy, favourite (the owner's heart), savedAt and the page text. `item` is a number (\"58\" or \"#58\") or the link's URL. The page text is cut at `maxChars` (default 60000).",
         inputSchema: z.object({ item: z.string(), maxChars: z.number().int().min(100).max(60_000).optional() }),
       },
       async ({ item, maxChars }) => {
@@ -64,6 +65,7 @@ const handler = createMcpHandler(
           bucket: bucketLabel(i.status, row.bucketName),
           status: i.status,
           sortedBy: i.sortedBy,
+          favourite: i.favourite,
           savedAt: i.createdAt,
           pageText: i.pageText ? i.pageText.slice(0, maxChars ?? 60_000) : null,
         });
@@ -84,16 +86,18 @@ const handler = createMcpHandler(
       "pocket_list",
       {
         title: "List saved links",
-        description: "Newest-first list of the owner's saved links, optionally one bucket (`bucket` = bucket name or \"unsorted\"). Compact rows.",
+        description: "Newest-first list of the owner's saved links, optionally one bucket (`bucket` = bucket name, \"unsorted\", or \"favourites\" for the links the owner hearted). Compact rows.",
         inputSchema: z.object({ bucket: z.string().optional(), limit: z.number().int().min(1).max(300).optional() }),
       },
       async ({ bucket, limit }) => {
         let filter: string | undefined;
-        if (bucket && bucket.toLowerCase() !== "unsorted") {
+        const keyword = bucket?.trim().toLowerCase();
+        if (keyword === "unsorted" || keyword === "favourites") filter = keyword;
+        else if (bucket) {
           const b = await bucketByName(bucket);
           if (!b) return fail("no_such_bucket", { bucket });
           filter = b.id;
-        } else if (bucket) filter = "unsorted";
+        }
         return text({ items: (await listItems({ bucket: filter, limit: limit ?? 50 })).map(compact) });
       },
     );
@@ -161,6 +165,7 @@ const handler = createMcpHandler(
         }),
       },
       async ({ name, reason, itemNumbers }) => {
+        if (reservedName(name)) return fail("reserved_name", { name, hint: "Unsorted and Favourites are views, not buckets." });
         const known = await db.select({ number: items.number }).from(items).where(inArray(items.number, itemNumbers));
         const numbers = known.map((k) => k.number);
         if (!numbers.length) return fail("no_such_items", { itemNumbers });

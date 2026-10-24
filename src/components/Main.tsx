@@ -57,7 +57,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
 
   // The view lives in the URL too (SPEC §4.2 routes), without a navigation.
   useEffect(() => {
-    const href = view.kind === "all" ? "/" : view.kind === "unsorted" ? "/?view=unsorted" : `/?bucket=${view.id}`;
+    const href = view.kind === "all" ? "/" : view.kind === "bucket" ? `/?bucket=${view.id}` : `/?view=${view.kind}`;
     if (location.pathname + location.search !== href) history.replaceState(null, "", href);
   }, [view]);
 
@@ -108,16 +108,19 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   }, [sorting, pollKey, api]);
 
   const inView = (c: Card) =>
-    view.kind === "all" || (view.kind === "unsorted" ? c.status === "unsorted" : c.bucket?.id === view.id);
+    view.kind === "all" ||
+    (view.kind === "unsorted" ? c.status === "unsorted" : view.kind === "favourites" ? c.favourite : c.bucket?.id === view.id);
   const visible = (results ?? items).filter(inView);
   const counts = useMemo(() => {
     const perBucket = new Map<string, number>();
     let unsorted = 0;
+    let favourites = 0;
     for (const i of items) {
       if (i.status === "unsorted") unsorted++;
+      if (i.favourite) favourites++;
       if (i.bucket) perBucket.set(i.bucket.id, (perBucket.get(i.bucket.id) ?? 0) + 1);
     }
-    return { all: items.length, unsorted, bucket: (id: string) => perBucket.get(id) ?? 0 };
+    return { all: items.length, unsorted, favourites, bucket: (id: string) => perBucket.get(id) ?? 0 };
   }, [items]);
 
   function focusCard(id: string) {
@@ -168,6 +171,23 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       const { item: updated } = (await r.json()) as { item: Card };
       patchCards((c) => (c.id === updated.id ? updated : c));
     }, "Couldn't move. Try again.");
+
+  // Heart (SPEC §6.6a): flips at once, sends the new value; a failure flips it back. A poll that merges this card meanwhile
+  // carries the database value, which the PATCH has already written or is about to.
+  function favourite(item: Card) {
+    const on = !item.favourite;
+    const flip = (v: boolean) => patchCards((c) => (c.id === item.id ? { ...c, favourite: v } : c));
+    flip(on);
+    attempt(async () => {
+      try {
+        const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ favourite: on }) });
+        if (!r.ok) throw new Error();
+      } catch (err) {
+        flip(!on);
+        throw err;
+      }
+    }, "Couldn't update. Try again.");
+  }
 
   const remove = (item: Card) =>
     attempt(async () => {
@@ -342,6 +362,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
                   onCopy={() => copyNumber(c)}
                   onMove={(bucketId) => move(c, bucketId)}
                   onDelete={() => remove(c)}
+                  onFavourite={() => favourite(c)}
                 />
               ))}
             </div>
@@ -371,6 +392,7 @@ function merge(prev: Card[], changed: Card[]): Card[] {
 function Empty({ view, buckets, q, total }: { view: View; buckets: BucketRow[]; q: string; total: number }) {
   if (q) return <EmptyState title={`No links match "${q}"`} />;
   if (view.kind === "unsorted") return <EmptyState title="Nothing unsorted." hint="Every link found a bucket." />;
+  if (view.kind === "favourites") return <EmptyState title="No favourites yet." hint="Tap the heart on a link to keep it here." />;
   if (view.kind === "bucket") return <EmptyState title={`No links in ${viewName(view, buckets)} yet.`} />;
   if (total === 0)
     return (
