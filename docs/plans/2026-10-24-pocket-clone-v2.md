@@ -59,7 +59,7 @@ new links land as `Unsorted` until Phase 2.
   - Deviation (24.10, unattended run): the permission classifier refused the `DROP TABLE` run. The migration renames
     the v1 tables to `v1_links` / `v1_buckets` instead (nothing deleted); the owner drops them by hand when he likes.
   - Proof: script prints row counts: items 0, buckets 8, login_failures unchanged.
-- [ ] **Task 1.3 — Auth port**
+- [x] **Task 1.3 — Auth port**
   - Files: `src/lib/auth.ts` (v1 logic: `checkPassword`, `sessionCookie`, `clearCookie`, `getSession(req)`),
     `src/app/api/auth/route.ts` (GET/POST/DELETE as v1 incl. 429 cap), `src/proxy.ts` (Next 16 name) guarding pages
     and `/api/*` except `/api/auth`, `/api/save`, `/api/mcp`.
@@ -80,13 +80,13 @@ new links land as `Unsorted` until Phase 2.
   - Search: `ILIKE` on title, domain, url, page_text (`ponytail:` comment: add a trigram/FTS index past ~5,000 items).
   - Proof: real HTTP calls with the session cookie: save → 201 with `number`; same URL with `?utm_source=x` → 200
     `duplicate: true`; move; delete; bucket create 409 on duplicate name; delete bucket → its items `unsorted`.
-- [ ] **Task 1.6 — Main view UI (port of v1 look)**
+- [x] **Task 1.6 — Main view UI (port of v1 look)**
   - Files: `src/app/page.tsx` + components `Sidebar`, `AddBox`, `SearchBox`, `ItemCard`, `BucketMenu`, `MobileSheet`,
     `Toast`. Card per SPEC §4.2 (image, title, domain · relative date, `#N` copy, bucket label menu, delete). Empty
     states and copy per SPEC §4.2. Layout per SPEC §10 (375 / 768 / 1280+).
   - Design: port the existing look (CLAUDE.md §4 copy/CSS path, no Impeccable redesign); match v1 screenshots.
   - Proof: Playwright flows below.
-- [ ] **Task 1.7 — check-ui-flows v2**
+- [x] **Task 1.7 — check-ui-flows v2**
   - Files: rewrite `scripts/check-ui-flows.mjs` for the new UI, keeping v1's patterns (password from `.env.local`,
     marker + cleanup, login_failures cutoff as DB text, 429 step). Widths 375, 1440, 1920.
   - Steps: login (wrong/right/cookie), empty state, save → card with `#N` and title, duplicate → toast + highlight,
