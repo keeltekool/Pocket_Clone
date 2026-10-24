@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ItemCard } from "./ItemCard";
 import { MobileSheet } from "./MobileSheet";
 import { Sidebar, viewName } from "./Sidebar";
@@ -37,6 +37,8 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   // A poll that read the database before the PATCH landed would otherwise flip the heart back (plan Review focus 1).
   const hearts = useRef(new Map<string, { on: boolean; settledAt: number | null }>());
   const heartQueue = useRef(new Map<string, Promise<void>>());
+  // The last heart value the server confirmed per card: what a failed save reverts to (two failed clicks end right).
+  const heartSaved = useRef(new Map<string, boolean>());
   // Every card that arrives from the server (poll, search, move) passes through this, so a pending heart wins.
   const withHeart = (c: Card) => (hearts.current.has(c.id) ? { ...c, favourite: hearts.current.get(c.id)!.on } : c);
   const since = useRef(initial.now);
@@ -171,7 +173,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       setUrl("");
       if (body.duplicate) {
         show(`Already saved as #${item.number} · ${cardLabel(item)}`);
-        setItems((prev) => merge(prev, [item]));
+        setItems((prev) => merge(prev, [withHeart(item)]));
         if (!inView(item)) setView({ kind: "all" });
         if (results && !results.some((c) => c.id === item.id)) setQ(""); // the card must be on screen to scroll to
         focusCard(item.id);
@@ -195,18 +197,21 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   function favourite(item: Card) {
     const on = !item.favourite;
     const flip = (v: boolean) => patchCards((c) => (c.id === item.id ? { ...c, favourite: v } : c));
+    if (!hearts.current.has(item.id)) heartSaved.current.set(item.id, item.favourite); // nothing pending: the UI is the server
     const mine = { on, settledAt: null as number | null };
     hearts.current.set(item.id, mine);
     flip(on);
     const save = () =>
       attempt(async () => {
         try {
-          const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ favourite: on }) });
+          // keepalive: the save still lands when the owner leaves the page right after the click.
+          const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ favourite: on }), keepalive: true });
           if (!r.ok) throw new Error();
+          heartSaved.current.set(item.id, on);
         } catch (err) {
           if (hearts.current.get(item.id) === mine) {
             hearts.current.delete(item.id);
-            flip(!on);
+            flip(heartSaved.current.get(item.id) ?? !on);
           }
           throw err;
         }
@@ -214,6 +219,13 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
         mine.settledAt = Date.now();
       });
     heartQueue.current.set(item.id, (heartQueue.current.get(item.id) ?? Promise.resolve()).then(save));
+  }
+
+  // Read while this card's heart is still saving: open the Reader after the save, so it shows the new value.
+  function openReader(e: MouseEvent, item: Card) {
+    if (hearts.current.get(item.id)?.settledAt !== null || !heartQueue.current.has(item.id)) return;
+    e.preventDefault();
+    heartQueue.current.get(item.id)!.then(() => location.assign(`/read/${item.number}`));
   }
 
   const remove = (item: Card) =>
@@ -390,6 +402,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
                   onMove={(bucketId) => move(c, bucketId)}
                   onDelete={() => remove(c)}
                   onFavourite={() => favourite(c)}
+                  onRead={(e) => openReader(e, c)}
                 />
               ))}
             </div>
@@ -400,7 +413,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       <MobileSheet open={sheetOpen} onClose={() => setSheetOpen(false)} {...nav} onView={(v) => { setView(v); setSheetOpen(false); }} />
 
       {toast && (
-        <div id="toast" role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-card-in rounded-md bg-ink px-4 py-2 text-small text-warm-white shadow-lg">
+        <div id="toast" role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-card-in rounded-md bg-ink px-4 py-2 text-small text-warm-white">
           {toast}
         </div>
       )}

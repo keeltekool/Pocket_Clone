@@ -2,7 +2,7 @@
 //   node scripts/check-page.mjs
 import assert from "node:assert/strict";
 import { parseHTML } from "linkedom";
-import { fetchPage, firstUrl, normalizeUrl, paragraphs } from "../src/lib/page.ts";
+import { fetchPage, firstUrl, MAX_TEXT, normalizeUrl, paragraphs } from "../src/lib/page.ts";
 
 const cases = [
   ["https://www.Example.com/Path/?utm_source=a&utm_medium=b#top", "example.com/Path"],
@@ -28,10 +28,11 @@ assert.equal(paragraphs(body("<p>a  b</p><ul><li>c</li><li>d</li></ul>")), "a b\
 assert.equal(paragraphs(body("<p>one <b>bold</b>\n word</p><div><p>two</p></div>line<br>break")), "one bold word\n\ntwo\n\nline\n\nbreak");
 assert.equal(paragraphs(body("<p> </p><div>\n</div>")), null);
 // At the 60,000 cap (Gate 2 review M6): the cut leaves no trailing break and no paragraph holds a newline.
-// 98 chars + "\n\n" = 100 per paragraph, so the 60,000 cut lands right after a break: the case trimEnd() exists for.
+// 98 chars + "\n\n" = 100 per paragraph, so the 60,000 cut lands right after a break. The stored text must stay exactly
+// MAX_TEXT long: the Reader's "The saved text ends here." test is `length >= MAX_TEXT` (finish review R1).
 const capped = paragraphs(body(Array.from({ length: 700 }, () => `<p>${"y".repeat(98)}</p>`).join("")));
-assert.ok(capped.length <= 60_000 && capped === capped.trimEnd(), "cut left a trailing break");
-assert.ok(capped.split("\n\n").every((p) => p && !p.includes("\n")), "malformed paragraph at the cap");
+assert.ok(capped.length >= MAX_TEXT, `a capped text is ${capped.length} chars, the Reader would not say it was cut`);
+assert.ok(capped.split("\n\n").filter(Boolean).every((p) => !p.includes("\n")), "malformed paragraph at the cap");
 console.log("paragraphs: ok");
 
 const page = await fetchPage("https://www.dokobit.com/et/blog/kuidas-kasutada-digitemplit-naited-reaalsest-elust");

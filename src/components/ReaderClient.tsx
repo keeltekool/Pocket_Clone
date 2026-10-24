@@ -25,6 +25,7 @@ function Reader({ item, truncated, onExpired }: { item: Item; truncated: boolean
   // Saves go out one after another (click order); only the newest click may revert on failure (as on the card).
   const queue = useRef(Promise.resolve());
   const clicks = useRef(0);
+  const saved = useRef(item.favourite); // the server's value: what a failed save reverts to
   const paragraphs = item.pageText?.split(/\n{2,}/).filter((p) => p.trim()) ?? [];
 
   const show = (msg: string) => {
@@ -39,12 +40,14 @@ function Reader({ item, truncated, onExpired }: { item: Item; truncated: boolean
     setFavourite(on);
     queue.current = queue.current.then(async () => {
       try {
-        const r = await fetch(`/api/items/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ favourite: on }) });
+        // keepalive: the save still lands when the owner leaves right after the click.
+        const r = await fetch(`/api/items/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ favourite: on }), keepalive: true });
         if (r.status === 401) return onExpired(); // session ended: the login form, which reloads into this page
         if (!r.ok) throw new Error();
+        saved.current = on;
       } catch {
         if (click !== clicks.current) return;
-        setFavourite(!on);
+        setFavourite(saved.current);
         show("Couldn't update. Try again.");
       }
     });
@@ -56,14 +59,15 @@ function Reader({ item, truncated, onExpired }: { item: Item; truncated: boolean
   }
 
   // Back to the list as it was (filter in the URL, scroll restored by the browser) when the Reader was opened from the
-  // app; a shared or typed /read link has no app page behind it, so it goes to the main list.
+  // app; a shared or typed /read link has no app page behind it, so it goes to the main list. A heart save still in
+  // flight lands first, so the list shows it.
   function back(e: MouseEvent) {
+    e.preventDefault();
+    let fromApp = false;
     try {
-      if (document.referrer && new URL(document.referrer).origin === location.origin && history.length > 1) {
-        e.preventDefault();
-        history.back();
-      }
+      fromApp = !!document.referrer && new URL(document.referrer).origin === location.origin && history.length > 1;
     } catch {}
+    queue.current.then(() => (fromApp ? history.back() : location.assign("/")));
   }
 
   const sorting = item.status === "sorting";
@@ -157,7 +161,7 @@ function Reader({ item, truncated, onExpired }: { item: Item; truncated: boolean
       </article>
 
       {toast && (
-        <div id="toast" role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-card-in rounded-md bg-ink px-4 py-2 text-small text-warm-white shadow-lg">
+        <div id="toast" role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-card-in rounded-md bg-ink px-4 py-2 text-small text-warm-white">
           {toast}
         </div>
       )}

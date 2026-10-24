@@ -305,12 +305,24 @@ try {
   });
 
   await step("heart failure flips back with Couldn't update. Try again.", async () => {
-    await page.route("**/api/items/*", (r) => (r.request().method() === "PATCH" ? r.abort() : r.continue()));
+    // Saves fail after 500 ms, so two quick clicks are both in flight before the first failure (finish review R3).
+    await page.route("**/api/items/*", async (r) => {
+      if (r.request().method() !== "PATCH") return r.continue();
+      await new Promise((ok) => setTimeout(ok, 500));
+      return r.abort().catch(() => {});
+    });
     try {
       await card(page).hover();
       await heart(page).click();
       await toast(page, "Couldn't update. Try again.");
       expect((await heart(page).getAttribute("aria-pressed")) === "false", "heart stayed on after a failed save");
+      // Finish review R3: on, then off, both saves fail → the heart shows what the server has (off), not the reverse.
+      await page.locator("#toast").waitFor({ state: "detached", timeout: 5_000 });
+      await heart(page).click();
+      await heart(page).click();
+      await toast(page, "Couldn't update. Try again.");
+      await page.waitForTimeout(500);
+      expect((await heart(page).getAttribute("aria-pressed")) === "false", "two failed clicks left the heart on");
     } finally {
       await page.unroute("**/api/items/*");
     }
@@ -413,6 +425,32 @@ try {
     await card(page).hover();
     await heart(page).click(); // back to off for the steps below
     await page.click('.sidebar-item[data-view="all"]');
+  });
+
+  // Finish review R2: a heart save still in flight when the owner opens Read (card) or taps Back (Reader) must land
+  // first, so the next page shows it. Every PATCH is held 1 s here.
+  await step("heart then Read at once → the Reader shows the heart; heart then Back at once → the list shows it (R2)", async () => {
+    const slow = async (route) => { if (route.request().method() === "PATCH") await new Promise((r) => setTimeout(r, 1_000)); await route.continue().catch(() => {}); }; // a navigation may cancel it
+    await page.route("**/api/items/*", slow);
+    try {
+      await page.goto(BASE, { waitUntil: "load" });
+      await card(page).hover();
+      expect((await heart(page).getAttribute("aria-pressed")) === "false", "start state");
+      await heart(page).click();
+      await card(page).locator(".card-read").click(); // no wait for the save
+      await page.waitForURL((u) => u.pathname === `/read/${number}`, { timeout: 10_000 });
+      await page.locator("h1.reader-title").waitFor({ timeout: 10_000 });
+      expect((await page.locator("aside .heart-btn").getAttribute("aria-pressed")) === "true", "Reader shows the heart from before the save");
+      await page.locator("aside .heart-btn").click(); // off
+      await page.locator(".reader-back:visible").click(); // no wait for the save
+      await page.locator("#url-input").waitFor({ timeout: 10_000 });
+      await card(page).waitFor({ timeout: 10_000 });
+      expect((await heart(page).getAttribute("aria-pressed")) === "false", "list shows the heart from before the save");
+      const [row] = await sql`select favourite from items where url = ${TEST_URL}`;
+      expect(row.favourite === false, "the Reader's last save was lost");
+    } finally {
+      await page.unroute("**/api/items/*", slow);
+    }
   });
 
   // Gate 2 review I1: iOS Safari may show the list from its back/forward cache after the Reader, with the old hearts.

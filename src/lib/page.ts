@@ -55,7 +55,8 @@ export function paragraphs(root: Node): string | null {
   };
   walk(root);
   const text = parts.map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n\n");
-  return text ? text.slice(0, MAX_TEXT).trimEnd() : null; // a cut between paragraphs leaves no trailing break
+  // No trim after the cut: a capped text must stay MAX_TEXT long, which is how the Reader knows it was cut.
+  return text ? text.slice(0, MAX_TEXT) : null;
 }
 
 // Title, preview image and readable text, fetched server-side. Any failure returns nulls; the caller keeps the URL
