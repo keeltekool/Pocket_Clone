@@ -64,7 +64,8 @@ async function newPage(width) {
   // The favicon fallback asks Google's service, which 404s for hosts without an icon (test URLs on this very site);
   // the card keeps its thumb ground, so that one is expected. Everything else ≥ 400 is reported unless deliberate.
   page.on("response", (r) => {
-    if (r.status() < 400 || deliberate(`status of ${r.status()}`) || /gstatic\.com\/faviconV2|google\.com\/s2\/favicons/.test(r.url())) return;
+    // The Reader 404 step asks for three missing numbers on purpose.
+    if (r.status() < 400 || deliberate(`status of ${r.status()}`) || /gstatic\.com\/faviconV2|google\.com\/s2\/favicons|\/read\/(999999999|abc|99999999999)$/.test(r.url())) return;
     consoleErrors.push(`${width}: ${r.status()} ${r.url().slice(0, 160)}`);
   });
   page.on("dialog", (d) => d.accept(d.type() === "prompt" ? RENAMED : undefined));
@@ -338,7 +339,8 @@ try {
     });
     try {
       await sql`update items set status = 'unsorted', sorted_at = now() where url = ${u}`; // the agent files it
-      await read;
+      // No hang if the poll never carries the card: fail after 15 s.
+      await Promise.race([read, new Promise((_, no) => setTimeout(() => no(new Error("no poll answer carried the filed card")), 15_000))]);
       await card(page, u).hover();
       const patched = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("/api/items/"));
       await heart(page, u).click();
@@ -355,6 +357,123 @@ try {
       await page.unroute("**/api/items?changedSince=*");
       await sql`delete from items where url = ${u}`;
       await page.reload({ waitUntil: "load" });
+    }
+  });
+
+  // ── v2.1 Reader (SPEC §4.6) ──
+  const readerRow = async (suffix, pageText) => {
+    const u = `https://en.wikipedia.org/wiki/Reader_${suffix}?pcflow=${RUN}`;
+    const [r] = await sql`insert into items (url, url_key, title, domain, status, sort_attempts, sorted_at, page_text)
+                          values (${u}, ${`en.wikipedia.org/wiki/Reader_${suffix}?pcflow=${RUN}`}, ${`Reader ${suffix}`}, 'en.wikipedia.org', 'unsorted', 1, now(), ${pageText})
+                          returning number`;
+    return { url: u, number: r.number };
+  };
+
+  await step("Read on a card (from the Jobs filter) → /read/N: title, domain, #N, bucket, paragraphs, Original link", async () => {
+    const jobsId = await page.locator('.sidebar-item:has(.bucket-name:text-is("Jobs"))').getAttribute("data-view");
+    await page.click(`.sidebar-item[data-view="${jobsId}"]`);
+    await page.waitForURL((u) => u.search === `?bucket=${jobsId}`, { timeout: 5_000 });
+    const title = (await card(page).locator(".card-title").innerText()).trim();
+    await card(page).locator(".card-read").click();
+    await page.waitForURL((u) => u.pathname === `/read/${number}`, { timeout: 10_000 });
+    expect((await page.locator("h1.reader-title").innerText()).trim() === title, "reader title differs from the card");
+    expect((await page.title()) === `${title} · Pocket Clone`, `document title: ${await page.title()}`);
+    expect((await page.locator(".reader-number").innerText()).trim() === `#${number}`, "reader #N");
+    expect((await page.locator(".reader-bucket").innerText()).trim() === "Jobs", "reader bucket label");
+    expect(await page.locator("aside >> text=en.wikipedia.org").isVisible(), "domain missing");
+    const paras = await page.locator(".reader-body p").count();
+    expect(paras >= 2, `only ${paras} paragraphs`);
+    const original = page.locator(".reader-original:visible");
+    expect((await original.getAttribute("href")) === TEST_URL && (await original.getAttribute("target")) === "_blank", "Original link");
+    const rail = await page.evaluate(() => { const a = document.querySelector("aside"); return { pos: getComputedStyle(a).position, railRight: a.getBoundingClientRect().right, textLeft: document.querySelector(".reader-body").getBoundingClientRect().left }; });
+    expect(rail.pos === "sticky" && rail.railRight <= rail.textLeft, `rail not beside the text: ${JSON.stringify(rail)}`);
+    await page.waitForTimeout(700); // entrance fade
+    await page.screenshot({ path: join(OUT, "1440-reader.png") });
+    await page.mouse.wheel(0, 1500);
+    await page.waitForTimeout(300);
+    expect((await page.locator("aside").boundingBox()).y >= 0, "rail scrolled away (not sticky)");
+  });
+
+  await step("Reader: #N copies pocket #N; heart saves; ← Back returns to the Jobs filter with the heart on", async () => {
+    await page.locator(".reader-number").click();
+    await toast(page, `Copied pocket #${number}`);
+    expect((await page.evaluate(() => navigator.clipboard.readText())) === `pocket #${number}`, "clipboard");
+    const patched = page.waitForResponse((r) => r.request().method() === "PATCH");
+    await page.locator("aside .heart-btn").click();
+    await patched;
+    expect((await page.locator("aside .heart-btn").getAttribute("aria-pressed")) === "true", "reader heart not on");
+    const [row] = await sql`select favourite from items where url = ${TEST_URL}`;
+    expect(row.favourite === true, "reader heart not saved");
+    await page.locator(".reader-back:visible").click();
+    await page.waitForURL((u) => u.search.startsWith("?bucket="), { timeout: 10_000 });
+    await card(page).waitFor({ timeout: 10_000 });
+    expect((await heart(page).getAttribute("aria-pressed")) === "true", "list shows a stale heart after Back");
+    await card(page).hover();
+    await heart(page).click(); // back to off for the steps below
+    await page.click('.sidebar-item[data-view="all"]');
+  });
+
+  await step("Reader states: no text → No text was saved; 60,000 chars → The saved text ends here.; page text is never HTML", async () => {
+    const empty = await readerRow("empty", null);
+    await page.goto(`${BASE}/read/${empty.number}`, { waitUntil: "load" });
+    await page.locator('.reader-empty:has-text("No text was saved for this link.")').waitFor({ timeout: 10_000 });
+    expect((await page.locator('.reader-empty a:has-text("Open the original ↗")').getAttribute("href")) === empty.url, "empty-state link");
+    const long = await readerRow("long", "word ".repeat(12_000).trim() + " end");
+    await page.goto(`${BASE}/read/${long.number}`, { waitUntil: "load" });
+    await page.locator('.reader-cut:has-text("The saved text ends here.")').waitFor({ timeout: 10_000 });
+    expect(await page.locator('.reader-cut a:has-text("Read the rest on the original ↗")').isVisible(), "cap link");
+    // Review focus 4: hostile text renders as text.
+    const evil = "<img src=x onerror=alert(1)>";
+    const hostile = await readerRow("hostile", `${evil}\n\nSecond paragraph.`);
+    let alerted = false;
+    page.once("dialog", () => (alerted = true));
+    await page.goto(`${BASE}/read/${hostile.number}`, { waitUntil: "load" });
+    await page.locator(".reader-body p").first().waitFor({ timeout: 10_000 });
+    expect((await page.locator(".reader-body p").first().innerText()) === evil, "hostile text not shown literally");
+    expect((await page.locator(".reader-body p").count()) === 2, "paragraph split");
+    expect((await page.locator(".reader-body img").count()) === 0 && !alerted, "page text was rendered as HTML");
+    await sql`delete from items where url like ${`https://en.wikipedia.org/wiki/Reader_%?pcflow=${RUN}`}`;
+  });
+
+  await step("Reader 404: unknown, malformed and out-of-range numbers → No link #…", async () => {
+    for (const seg of ["999999999", "abc", "99999999999"]) {
+      const r = await page.goto(`${BASE}/read/${seg}`, { waitUntil: "load" });
+      expect(r.status() === 404, `/read/${seg} → ${r.status()}`);
+      await page.locator(`text="No link #${seg}."`).waitFor({ timeout: 5_000 });
+    }
+    await page.click('a:has-text("← All links")');
+    await page.locator("#url-input").waitFor({ timeout: 10_000 });
+  });
+
+  await step("Reader logged out → login form (no title leaked), unlock → the reader", async () => {
+    const fresh = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    try {
+      const p = await fresh.newPage();
+      const html = await (await p.goto(`${BASE}/read/${number}`, { waitUntil: "load" })).text();
+      await p.locator("#auth-form").waitFor({ timeout: 10_000 });
+      expect(!/Bookmark \(/.test(html) && (await p.title()) === "Pocket Clone", "logged-out page leaks the link title");
+      await p.fill("#password-input", process.env.APP_PASSWORD);
+      await p.click("#auth-btn");
+      await p.locator("h1.reader-title").waitFor({ timeout: 15_000 });
+    } finally {
+      await fresh.close();
+    }
+  });
+
+  // Review focus 3: the session ends while reading; the heart's save gets 401 → the login form, not a silent revert.
+  await step("Reader: session expiry on the heart → login form", async () => {
+    const fresh = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    try {
+      const p = await fresh.newPage();
+      await p.goto(`${BASE}/read/${number}`, { waitUntil: "load" });
+      await p.fill("#password-input", process.env.APP_PASSWORD);
+      await p.click("#auth-btn");
+      await p.locator("h1.reader-title").waitFor({ timeout: 15_000 });
+      await fresh.clearCookies();
+      await p.locator("aside .heart-btn").click();
+      await p.locator("#auth-form").waitFor({ timeout: 10_000 });
+    } finally {
+      await fresh.close();
     }
   });
 
@@ -577,7 +696,7 @@ try {
     expect(await c.locator(".card-bucket").first().isVisible(), "bucket label hidden on the phone");
     expect((await c.locator(".delete-btn").count()) === 0 || !(await c.locator(".delete-btn").isVisible()), "desktop delete icon shown on the phone");
     // v2.1: the outline heart is always visible on touch, on the same row as #N and the label (SPEC §10).
-    const boxes = await Promise.all([".card-number", ".heart-btn", ".card-bucket-btn"].map((s) => c.locator(s).first().boundingBox()));
+    const boxes = await Promise.all([".card-number", ".card-read", ".heart-btn", ".card-bucket-btn"].map((s) => c.locator(s).first().boundingBox()));
     expect(boxes.every(Boolean), "a control of the phone row is missing");
     expect(boxes.every((b) => Math.abs(b.y + b.height / 2 - (boxes[0].y + boxes[0].height / 2)) < 4), `phone row not on one line: ${JSON.stringify(boxes)}`);
     expect((await opacity(c.locator(".heart-btn"))) === "1", "outline heart hidden on touch");
@@ -599,6 +718,21 @@ try {
     await m.page.click("#mobile-filter-btn");
     await m.page.locator('#mobile-sheet .sheet-item:has-text("All links")').click();
     await m.page.locator("#mobile-sheet[data-open]").waitFor({ state: "detached", timeout: 5_000 });
+  });
+
+  await step("Reader on the phone: Read → one column, bar with Back and Original, no sideways scroll, Back returns", async () => {
+    await card(m.page, MOBILE_URL).locator(".card-read").tap();
+    await m.page.locator("h1.reader-title").waitFor({ timeout: 10_000 });
+    expect((await m.page.locator(".reader-back:visible").count()) === 1 && (await m.page.locator(".reader-original:visible").count()) === 1, "phone bar");
+    const w = await m.page.evaluate(() => document.documentElement.scrollWidth);
+    expect(w <= 375, `reader is ${w}px wide`);
+    const [t, a] = await Promise.all([m.page.locator("h1.reader-title").boundingBox(), m.page.locator("aside").boundingBox()]);
+    expect(a.y > t.y, "details not under the title on the phone");
+    expect((await m.page.locator(".reader-body p").count()) >= 2, "no paragraphs on the phone");
+    await m.page.waitForTimeout(700); // entrance fade
+    await m.page.screenshot({ path: join(OUT, "375-reader.png") });
+    await m.page.locator(".reader-back:visible").tap();
+    await m.page.locator("#url-input").waitFor({ timeout: 10_000 });
   });
 
   await step("no sideways scroll at 375", async () => {
@@ -698,6 +832,15 @@ try {
       await expectOpacity(outline, "0", "outline heart visible without hover at 1920");
     }
     await w.page.screenshot({ path: join(OUT, "1920-app.png") });
+    if (await w.page.locator(".card-read").count()) {
+      await w.page.locator(".card-read").first().click();
+      await w.page.locator("h1.reader-title").waitFor({ timeout: 10_000 });
+      const r = await w.page.evaluate(() => ({ aside: document.querySelector("aside").getBoundingClientRect().toJSON(), body: document.querySelector(".reader-body").getBoundingClientRect().toJSON() }));
+      expect(r.aside.width >= 250 && r.aside.right <= r.body.left && r.body.width <= 680, `1920 reader composition: ${JSON.stringify(r)}`);
+      await w.page.waitForTimeout(700); // entrance fade
+    await w.page.screenshot({ path: join(OUT, "1920-reader.png") });
+      await w.page.goto(BASE, { waitUntil: "load" });
+    }
     await w.page.goto(`${BASE}/setup`, { waitUntil: "load" });
     await w.page.locator("#claude-code").waitFor({ timeout: 10_000 });
     expect(await w.page.locator('nav[aria-label="Sections"]').isVisible(), "setup rail hidden at 1920");

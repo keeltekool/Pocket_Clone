@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Fraunces, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 
-// Fraunces carries titles only (its optical size follows the font size); Source Sans 3 carries everything else.
+// Fraunces carries titles and the Reader's text (its optical size follows the font size); Source Sans 3 carries
+// everything else.
 const display = Fraunces({ subsets: ["latin", "latin-ext"], axes: ["opsz"], variable: "--font-fraunces" });
 const body = Source_Sans_3({ subsets: ["latin", "latin-ext"], variable: "--font-source-sans" });
 

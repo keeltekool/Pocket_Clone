@@ -37,6 +37,8 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   // A poll that read the database before the PATCH landed would otherwise flip the heart back (plan Review focus 1).
   const hearts = useRef(new Map<string, { on: boolean; settledAt: number | null }>());
   const heartQueue = useRef(new Map<string, Promise<void>>());
+  // Every card that arrives from the server (poll, search, move) passes through this, so a pending heart wins.
+  const withHeart = (c: Card) => (hearts.current.has(c.id) ? { ...c, favourite: hearts.current.get(c.id)!.on } : c);
   const since = useRef(initial.now);
   const [pollKey, setPollKey] = useState(0);
 
@@ -76,7 +78,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     const t = setTimeout(() => {
       api(`/api/items?q=${encodeURIComponent(needle)}`)
         .then((r) => r.json())
-        .then((d) => !stale && setResults(d.items))
+        .then((d) => !stale && setResults((d.items as Card[]).map(withHeart)))
         .catch(() => {});
     }, 300);
     return () => {
@@ -99,7 +101,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
         const [r, s] = await Promise.all([api(`/api/items?changedSince=${encodeURIComponent(since.current)}`), api("/api/suggestions")]);
         const { items: fetched, now } = (await r.json()) as { items: Card[]; now: string };
         since.current = now;
-        const changed = fetched.map((c) => (hearts.current.has(c.id) ? { ...c, favourite: hearts.current.get(c.id)!.on } : c));
+        const changed = fetched.map(withHeart);
         // A poll that started after a heart's PATCH settled read the saved value: the override is no longer needed.
         for (const [id, h] of hearts.current) if (h.settledAt !== null && h.settledAt < started) hearts.current.delete(id);
         if (changed.length) {
@@ -177,7 +179,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ bucketId }) });
       if (!r.ok) throw new Error();
       const { item: updated } = (await r.json()) as { item: Card };
-      patchCards((c) => (c.id === updated.id ? updated : c));
+      patchCards((c) => (c.id === updated.id ? withHeart(updated) : c));
     }, "Couldn't move. Try again.");
 
   // Heart (SPEC §6.6a): flips at once and sends the new value. Saves for one card go out one after another, so two quick

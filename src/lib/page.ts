@@ -1,7 +1,8 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 
-const MAX_TEXT = 60_000;
+// Saved page text cap (SPEC §5); the Reader shows "The saved text ends here." at it.
+export const MAX_TEXT = 60_000;
 const MAX_HTML = 2_000_000;
 const TIMEOUT_MS = 8_000;
 const TRACKING = /^(utm_|mc_)|^(fbclid|gclid)$/;
@@ -36,6 +37,26 @@ export function firstUrl(text: string): string | null {
 type PageData = { title: string | null; imageUrl: string | null; text: string | null };
 const NONE: PageData = { title: null, imageUrl: null, text: null };
 const squash = (s: string | null | undefined) => (s || "").replace(/\s+/g, " ").trim() || null;
+
+// Elements that end a paragraph. Everything else (a, b, span, em…) is inline and runs on within the paragraph.
+const BLOCK = new Set(["ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "BR", "DD", "DIV", "DL", "DT", "FIGCAPTION", "FIGURE", "FOOTER", "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI", "MAIN", "OL", "P", "PRE", "SECTION", "TABLE", "TD", "TH", "TR", "UL"]);
+
+// Readable text with its paragraphs (SPEC §5, v2.1): one paragraph per block, whitespace inside collapsed, joined by a
+// blank line, cut at MAX_TEXT. The Reader splits on the blank lines; the sorter, search and MCP read the same text.
+export function paragraphs(root: Node): string | null {
+  const parts = [""];
+  const walk = (node: Node) => {
+    if (node.nodeType === 3) parts[parts.length - 1] += node.textContent ?? "";
+    if (node.nodeType !== 1) return;
+    const block = BLOCK.has((node as Element).tagName.toUpperCase());
+    if (block) parts.push("");
+    for (const child of Array.from(node.childNodes)) walk(child);
+    if (block) parts.push("");
+  };
+  walk(root);
+  const text = parts.map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n\n");
+  return text ? text.slice(0, MAX_TEXT) : null;
+}
 
 // Title, preview image and readable text, fetched server-side. Any failure returns nulls; the caller keeps the URL
 // as the title and the agent sorts on what it has (SPEC §6.1, §6.10).
@@ -79,9 +100,10 @@ export async function fetchPage(url: string): Promise<PageData> {
     } catch {}
     // Readability rewrites the document, so metadata is read first. Code and styles never count as page text.
     document.querySelectorAll("script, style, noscript, template").forEach((el) => el.remove());
-    const article = new Readability(document as unknown as Document, { charThreshold: 200 }).parse();
-    const text = squash(article?.textContent) || squash(document.body?.textContent)?.slice(0, MAX_TEXT) || null;
-    return { title, imageUrl, text: text ? text.slice(0, MAX_TEXT) : null };
+    // The identity serializer hands back the article element (not an HTML string), so its blocks become paragraphs.
+    const article = new Readability<Node>(document as unknown as Document, { charThreshold: 200, serializer: (el) => el }).parse();
+    const text = (article?.content && paragraphs(article.content)) || (document.body && paragraphs(document.body as unknown as Node)) || null;
+    return { title, imageUrl, text };
   } catch {
     return NONE;
   }

@@ -15,7 +15,7 @@ type Props = {
   onFavourite: () => void;
 };
 
-// One saved link (SPEC §4.2): image, title, domain · date, #N (copies `pocket #N`), heart, bucket label menu, delete.
+// One saved link (SPEC §4.2): image, title, domain · date, #N (copies `pocket #N`), Read, heart, bucket label menu, delete.
 // One actions row, placed by the grid: on phones (SPEC §10) under the meta line, with delete inside the label menu;
 // from md up in a third column with the trash icon.
 export function ItemCard({ item, index, buckets, highlight, onCopy, onMove, onDelete, onFavourite }: Props) {
@@ -74,6 +74,12 @@ export function ItemCard({ item, index, buckets, highlight, onCopy, onMove, onDe
         >
           #{item.number}
         </button>
+        <a
+          href={`/read/${item.number}`}
+          className="card-read whitespace-nowrap rounded-sm border border-cream-dark bg-cream px-2 py-1 text-micro font-semibold text-ink-muted transition-all duration-150 hover:border-ink-faint hover:bg-cream-dark hover:text-terracotta"
+        >
+          Read
+        </a>
         {/* Outline heart: hover/focus-only on desktop pointers, like delete; a filled heart and touch always show it. */}
         <HeartButton
           on={item.favourite}

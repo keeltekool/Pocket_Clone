@@ -1,7 +1,8 @@
 // Unit check for src/lib/page.ts (plan Task 1.4): URL normalisation, first-URL extraction and one real page fetch.
 //   node scripts/check-page.mjs
 import assert from "node:assert/strict";
-import { fetchPage, firstUrl, normalizeUrl } from "../src/lib/page.ts";
+import { parseHTML } from "linkedom";
+import { fetchPage, firstUrl, normalizeUrl, paragraphs } from "../src/lib/page.ts";
 
 const cases = [
   ["https://www.Example.com/Path/?utm_source=a&utm_medium=b#top", "example.com/Path"],
@@ -21,10 +22,20 @@ assert.equal(firstUrl("https://en.wikipedia.org/wiki/Bookmark_(digital)"), "http
 assert.equal(firstUrl("(see https://a.ee/x)."), "https://a.ee/x", "unbalanced bracket dropped");
 console.log("normalizeUrl + firstUrl: ok");
 
+// v2.1 paragraphs (SPEC §5): blocks → paragraphs joined by a blank line, inline runs on, whitespace collapsed.
+const body = (html) => parseHTML(`<html><body>${html}</body></html>`).document.body;
+assert.equal(paragraphs(body("<p>a  b</p><ul><li>c</li><li>d</li></ul>")), "a b\n\nc\n\nd");
+assert.equal(paragraphs(body("<p>one <b>bold</b>\n word</p><div><p>two</p></div>line<br>break")), "one bold word\n\ntwo\n\nline\n\nbreak");
+assert.equal(paragraphs(body("<p> </p><div>\n</div>")), null);
+console.log("paragraphs: ok");
+
 const page = await fetchPage("https://www.dokobit.com/et/blog/kuidas-kasutada-digitemplit-naited-reaalsest-elust");
 assert.ok(page.title && /digitempl/i.test(page.title), `title: ${page.title}`);
 assert.ok(page.text && page.text.length > 1000, `text length: ${page.text?.length}`);
-console.log(`fetchPage: "${page.title}" · image ${page.imageUrl ? "yes" : "no"} · text ${page.text.length} chars`);
+const paras = page.text.split("\n\n");
+assert.ok(paras.length >= 5, `only ${paras.length} paragraphs`);
+assert.ok(paras.every((p) => p && !p.includes("\n")) && !/\n{3,}/.test(page.text), "malformed paragraph breaks");
+console.log(`fetchPage: "${page.title}" · image ${page.imageUrl ? "yes" : "no"} · text ${page.text.length} chars · ${paras.length} paragraphs`);
 
 // x.com gives bots no HTML; the post text comes from the public oEmbed endpoint (Review focus 2).
 const tweet = await fetchPage("https://x.com/jack/status/20?pcflow=unit"); // the flows save it with a marker param

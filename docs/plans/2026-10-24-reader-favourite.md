@@ -82,7 +82,7 @@ filter (after ship).
 
 ## Phase 2 — Reader (paragraph text, `/read/<number>`, Read button)
 
-- [ ] **Task 2.1 — Paragraph-keeping text**
+- [x] **Task 2.1 — Paragraph-keeping text**
   - Files: `src/lib/page.ts`: `paragraphs(root: Element): string | null` walks the node tree, emits a break at block
     elements (`p, div, section, article, h1–h6, li, blockquote, pre, figcaption, dt, dd, tr, br`), collapses whitespace
     per paragraph, drops empty ones, joins with `\n\n`, cuts at `MAX_TEXT`. Used for the Readability result (check
@@ -90,11 +90,11 @@ filter (after ship).
     fallback; x.com oEmbed keeps one paragraph. Title/meta extraction unchanged.
   - Proof: `scripts/check-page.mjs`: the Dokobit fetch has ≥ 5 `\n\n` breaks, no paragraph contains `\n`, no run of
     3+ newlines; a fixture HTML string (`<p>a  b</p><ul><li>c</li><li>d</li></ul>`) → `"a b\n\nc\n\nd"`.
-- [ ] **Task 2.2 — Re-fetch existing text**
+- [x] **Task 2.2 — Re-fetch existing text**
   - Files: extend `scripts/migrate-v21.mjs` with `--refetch`: for every item, `fetchPage(url)`; non-null text →
     `update items set page_text = $1 where id = $2`; null → keep old text. Prints `#N: old → new chars, paragraphs`.
   - Proof: run once; `select number, position(E'\n\n' in page_text) > 0 from items` → true for the prod item(s) with text.
-- [ ] **Task 2.3 — Reader page**
+- [x] **Task 2.3 — Reader page**
   - Design: invoke `impeccable` (new screen, CLAUDE.md §4) before the first UI edit; the warm-paper system and the
     `/setup` page composition are the base.
   - Files: create `src/app/read/[number]/page.tsx` (server: `hasSession`; logged out → `<Login onAuthed=reload>` via the
@@ -105,7 +105,7 @@ filter (after ship).
     and revert as Main), bucket label text, paragraphs, empty and cap states). `src/lib/items.ts`
     `getReaderItem(number: number)` returns the card plus `pageText`.
   - Proof: flows below.
-- [ ] **Task 2.4 — Read button on the card**
+- [x] **Task 2.4 — Read button on the card**
   - Files: `src/components/ItemCard.tsx`: `<a href="/read/58" class="card-read">Read</a>` styled like `#N`, after `#N`,
     always visible (also while Sorting…).
   - Proof: flows below.
@@ -118,6 +118,14 @@ link.`; a marker row with `page_text` set to 60,000 chars (SQL) → `The saved t
 `/read/abc` → 404 + `No link #…`; logged out `/read/N` → login form, unlock → the reader; 375 no sideways scroll and the
 phone card row (`#N` · Read · heart · label) on one line; 1440/1920 rail visible and sticky beside the text. Screenshots
 per viewport. `code-reviewer` on the Phase 2 diff. Owner sees: Read on every card and the reader on the phone.
+
+**Phase 2 notes (24.10.2026):** Gate 1 re-review "ready"; its follow-up Minors landed here: every card from the server
+(poll, search, move) passes the pending-heart override (`withHeart`), and the race step fails after 15 s instead of
+hanging. Deviations: the not-found boundary is a client component reading the number from the URL (a not-found file
+gets no params); the desktop rail + text is one centred group (`max-w` 58.5rem / 61rem) so 1440/1920 stay balanced;
+`wrap-anywhere` on the Reader text (a long token widened the 375 page to 572 px in the first gate run). Local gate run:
+build clean, `check-page` ok (Dokobit 24 paragraphs), `check-api` 18/18, `check-mcp` 10/10, `check-ui-flows` 53/53,
+Impeccable detector `[]`. Prod item #125 re-fetched: 40 paragraphs.
 
 ## Finish
 
