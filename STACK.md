@@ -24,6 +24,8 @@ Env vars stored in: Vercel (production), `.env.local` (local dev)
 | `FUNCTION_INVOCATION_FAILED` (tsconfig) | Use `module: "CommonJS"` + `moduleResolution: "node"` |
 | `FUNCTION_INVOCATION_FAILED` (handler format) | Use Vercel `(req, res)` format, NOT Web API `Request`/`Response` |
 | API key mismatch | `vercel env add` with a trailing newline breaks the value: temp file + `cmd /c "vercel env add NAME production < file"` |
+| Timestamp compare off by 3 h | Columns are `timestamp` (no zone, UTC). A JS `Date` passed to raw `neon` SQL goes out with the local +03:00 offset, which Postgres drops. Use DB-side `now()` or text (`now()::timestamp::text`); Drizzle query builders send UTC and are fine. |
+| Login blocked (429) | 20 wrong passwords in 15 min close new logins (`login_failures`). Clear with `delete from login_failures`. |
 | Frontend data empty | Drizzle returns camelCase, code expected snake_case — match property names |
 | `dotenv` loads wrong file | Use `config({ path: ".env.local" })`, not `import "dotenv/config"` |
 | Slow link saving (~30s) | Save instantly, fetch metadata in background |

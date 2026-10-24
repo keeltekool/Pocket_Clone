@@ -21,7 +21,9 @@ const TEST_URL = `https://en.wikipedia.org/wiki/Bookmark_(digital)?pcflow=${RUN}
 const BUCKET = `pcflow-${RUN}`;
 const RENAMED = `${BUCKET}-renamed`;
 const bucketsBefore = new Set((await sql`select id from buckets where user_id = 'owner'`).map((r) => r.id));
-const [{ runStart }] = await sql`select now() as "runStart"`; // login_failures rows from this run are removed at the end
+// login_failures rows from this run are removed at the end. Kept as DB text: a JS Date goes out with the local +03:00
+// offset, which a timestamp-without-zone column drops, shifting the cutoff three hours ahead.
+const [{ runStart }] = await sql`select now()::timestamp::text as "runStart"`;
 
 let passed = 0;
 const failures = [];
@@ -93,7 +95,8 @@ try {
       const r = await page.request.post(`${BASE}/api/auth`, { data: { password: process.env.APP_PASSWORD } });
       expect(r.status() === 429, `POST /api/auth → ${r.status()}`);
     } finally {
-      await sql`delete from login_failures where created_at >= ${runStart}`;
+      const removed = await sql`delete from login_failures where created_at >= ${runStart}::timestamp returning id`;
+      expect(removed.length >= 20, `cleanup removed ${removed.length} rows, logins would stay blocked`);
     }
   });
 
@@ -219,7 +222,7 @@ try {
   await browser.close();
   // Backstop: remove anything this run left behind (test links, test buckets, empty buckets the AI created)
   await sql`delete from links where user_id = 'owner' and url like ${"%pcflow=" + RUN}`;
-  await sql`delete from login_failures where created_at >= ${runStart}`;
+  await sql`delete from login_failures where created_at >= ${runStart}::timestamp`;
   const after = await sql`select b.id, b.name, count(l.id)::int n from buckets b left join links l on l.bucket_id = b.id where b.user_id = 'owner' group by b.id`;
   for (const b of after) {
     if (!bucketsBefore.has(b.id) && (b.name.startsWith(BUCKET) || b.n === 0)) await sql`delete from buckets where id = ${b.id}`;
