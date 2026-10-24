@@ -25,6 +25,14 @@ export const links = pgTable("links", {
   index("idx_links_bucket_id").on(table.bucketId),
 ]);
 
+// One row per wrong password; api/auth refuses logins while too many are recent.
+export const loginFailures = pgTable("login_failures", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_login_failures_created_at").on(table.createdAt),
+]);
+
 export type Bucket = typeof buckets.$inferSelect;
 export type NewBucket = typeof buckets.$inferInsert;
 export type Link = typeof links.$inferSelect;

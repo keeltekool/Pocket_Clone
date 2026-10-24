@@ -1,7 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 
 // Single-owner app: one password (APP_PASSWORD), no user accounts. Every row belongs to OWNER.
-// ponytail: no login rate limit; a long random APP_PASSWORD is the defence. Add one if the password gets short.
+// Guessing is capped in api/auth (login_failures).
 export const OWNER = "owner";
 const COOKIE = "pc_session";
 const REMEMBER_DAYS = 180;
@@ -12,8 +12,10 @@ const sign = (exp: string) => createHmac("sha256", process.env.APP_PASSWORD!).up
 const same = (a: string, b: string) =>
   timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 
+// NFC: "ü" typed as one code point or as u + combining mark must match the same password.
 export function checkPassword(password: unknown): boolean {
-  return typeof password === "string" && !!process.env.APP_PASSWORD && same(password, process.env.APP_PASSWORD);
+  const expected = process.env.APP_PASSWORD;
+  return typeof password === "string" && !!expected && same(password.normalize("NFC"), expected.normalize("NFC"));
 }
 
 // remember → persistent cookie for REMEMBER_DAYS; otherwise a browser-session cookie the server caps at one day.

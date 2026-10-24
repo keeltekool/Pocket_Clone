@@ -50,6 +50,9 @@ async function handleLogin(e) {
     headers: JSON_HEADERS,
     body: JSON.stringify({ password: passwordInput.value, remember: rememberInput.checked }),
   });
+  if (!response.ok) {
+    authError.textContent = (await response.json().catch(() => ({}))).error || 'Wrong password';
+  }
   authError.hidden = response.ok;
   if (response.ok) {
     passwordInput.value = '';
