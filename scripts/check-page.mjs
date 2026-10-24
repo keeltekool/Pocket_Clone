@@ -27,7 +27,7 @@ assert.ok(page.text && page.text.length > 1000, `text length: ${page.text?.lengt
 console.log(`fetchPage: "${page.title}" · image ${page.imageUrl ? "yes" : "no"} · text ${page.text.length} chars`);
 
 // x.com gives bots no HTML; the post text comes from the public oEmbed endpoint (Review focus 2).
-const tweet = await fetchPage("https://x.com/jack/status/20");
+const tweet = await fetchPage("https://x.com/jack/status/20?pcflow=unit"); // the flows save it with a marker param
 assert.ok(tweet.title === "jack on X" && /twttr/.test(tweet.text ?? ""), `tweet: ${JSON.stringify(tweet)}`);
 console.log(`x.com via oEmbed: "${tweet.title}" · "${tweet.text}"`);
 

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NewBucket, type NavProps } from "./Sidebar";
 import { sameView, type BucketRow, type View } from "./types";
 import { Count, IconClose, IconDots, IconPencil, IconTrash, Menu, MenuItem } from "./ui";
@@ -8,17 +8,20 @@ import { Count, IconClose, IconDots, IconPencil, IconTrash, Menu, MenuItem } fro
 // closes. Bucket ⋮ and + New bucket live here too, since phones have no sidebar.
 export function MobileSheet({ open, onClose, buckets, counts, view, onView, onCreate, onRename, onDelete, prefill, onPrefillDone }: NavProps & { open: boolean; onClose: () => void }) {
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // Runs on open/close only: Main re-renders every poll tick with a fresh onClose, which must not reset the menu.
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     if (!open) return;
     setMenuFor(null);
     document.body.style.overflow = "hidden";
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && close.current();
     document.addEventListener("keydown", key);
     return () => {
       document.body.style.overflow = "";
       document.removeEventListener("keydown", key);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   const row = (label: string, count: number, v: View, bucket?: BucketRow) => {
     const active = sameView(view, v);

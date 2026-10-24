@@ -54,7 +54,14 @@ export async function fetchPage(url: string): Promise<PageData> {
       return NONE; // PDFs, images, downloads: keep the URL as the title
     }
     const reader = res.body.getReader();
-    const decoder = new TextDecoder();
+    // Older Estonian sites still serve windows-1257 / iso-8859-x; an unknown label falls back to UTF-8.
+    const charset = /charset=["']?([\w-]+)/i.exec(res.headers.get("content-type") ?? "")?.[1];
+    let decoder: TextDecoder;
+    try {
+      decoder = new TextDecoder(charset || "utf-8");
+    } catch {
+      decoder = new TextDecoder();
+    }
     let html = "";
     while (html.length < MAX_HTML) {
       const { done, value } = await reader.read();
@@ -72,7 +79,8 @@ export async function fetchPage(url: string): Promise<PageData> {
     try {
       imageUrl = image ? new URL(image, res.url).href : null;
     } catch {}
-    // Readability rewrites the document, so metadata is read first.
+    // Readability rewrites the document, so metadata is read first. Code and styles never count as page text.
+    document.querySelectorAll("script, style, noscript, template").forEach((el) => el.remove());
     const article = new Readability(document as unknown as Document, { charThreshold: 200 }).parse();
     const text = squash(article?.textContent) || squash(document.body?.textContent)?.slice(0, MAX_TEXT) || null;
     return { title, imageUrl, text: text ? text.slice(0, MAX_TEXT) : null };

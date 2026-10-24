@@ -74,9 +74,12 @@ try {
   const [row] = await sql`select status, sorted_by from items where number = ${number}`;
   assert.ok(row.status === "sorted" && row.sorted_by === "agent", JSON.stringify(row));
   assert.equal((await call("pocket_file_item", { number, bucket: "Nope" })).isError, true);
+  const again = await call("pocket_file_item", { number, bucket: "Jobs" });
+  assert.ok(again.isError && again.data.error === "already_filed", "a link already in a bucket must not be re-filed");
+  await sql`update items set status = 'unsorted', bucket_id = null where number = ${number}`;
   const back = (await call("pocket_file_item", { number, bucket: "unsorted" })).data;
   assert.equal(back.bucket, "Unsorted");
-  ok("pocket_file_item: case-insensitive bucket, unknown bucket refused, back to unsorted");
+  ok("pocket_file_item: case-insensitive bucket, unknown bucket refused, filed link not re-filed, unsorted ok");
 
   await sql`update items set sorted_by = 'owner' where number = ${number}`;
   const refused = await call("pocket_file_item", { number, bucket: "Jobs" });

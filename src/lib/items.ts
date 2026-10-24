@@ -38,7 +38,7 @@ export async function listItems(f: ListFilter = {}): Promise<Card[]> {
   if (f.bucket === "unsorted") where.push(eq(items.status, "unsorted"));
   else if (f.bucket) where.push(isUuid(f.bucket) ? eq(items.bucketId, f.bucket) : sql`false`);
   if (f.q) {
-    const needle = `%${f.q}%`;
+    const needle = `%${f.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`; // literal %, _ and \ in the query
     where.push(or(ilike(items.title, needle), ilike(items.domain, needle), ilike(items.url, needle), ilike(items.pageText, needle))!);
   }
   if (f.changedSince) {

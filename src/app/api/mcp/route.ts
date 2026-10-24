@@ -142,7 +142,7 @@ const handler = createMcpHandler(
         inputSchema: z.object({ number: z.number().int().positive(), bucket: z.string().min(1) }),
       },
       async ({ number, bucket }) => {
-        const [cur] = await db.select({ id: items.id, sortedBy: items.sortedBy }).from(items).where(eq(items.number, number)).limit(1);
+        const [cur] = await db.select({ id: items.id, sortedBy: items.sortedBy, status: items.status }).from(items).where(eq(items.number, number)).limit(1);
         if (!cur) return fail("not_found", { number });
         if (cur.sortedBy === "owner") return fail("owner_filed", { number, hint: "The owner moved this link by hand; leave it." });
         let bucketId: string | null = null;
@@ -151,11 +151,13 @@ const handler = createMcpHandler(
           if (!b) return fail("no_such_bucket", { bucket, hint: "Use an existing bucket name exactly, or \"unsorted\"." });
           bucketId = b.id;
         }
-        // The owner guard is in the WHERE: a move the owner makes between the check and the write wins.
+        // The guards are in the WHERE: a move the owner makes between the check and the write wins, and a link
+        // already in a bucket is never re-filed (the agent only ever files Sorting… and Unsorted links).
+        if (cur.status === "sorted") return fail("already_filed", { number, hint: "This link is already in a bucket; leave it." });
         const written = await db
           .update(items)
           .set({ bucketId, status: bucketId ? "sorted" : "unsorted", sortedBy: "agent", sortedAt: new Date() })
-          .where(sql`${items.id} = ${cur.id} and ${items.sortedBy} is distinct from 'owner'`)
+          .where(sql`${items.id} = ${cur.id} and ${items.sortedBy} is distinct from 'owner' and ${items.status} in ('sorting', 'unsorted')`)
           .returning({ id: items.id });
         if (!written.length) return fail("owner_filed", { number, hint: "The owner moved this link by hand; leave it." });
         const row = await findItem(String(number));

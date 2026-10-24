@@ -6,8 +6,6 @@ import { cleanName, conflict, duplicateName, isUuid } from "@/lib/buckets";
 import { bucketCounts } from "@/lib/items";
 import { dispatchBucketCreated } from "@/lib/sorter";
 
-export const maxDuration = 30;
-
 export async function GET() {
   return Response.json(await bucketCounts());
 }
@@ -31,6 +29,6 @@ export async function POST(req: Request) {
       .set({ status: "created" })
       .where(and(eq(bucketSuggestions.id, body.suggestionId), eq(bucketSuggestions.status, "open")));
   }
-  await dispatchBucketCreated(bucket.name);
+  dispatchBucketCreated(bucket.name);
   return Response.json({ bucket: { ...bucket, count: 0 } }, { status: 201 });
 }

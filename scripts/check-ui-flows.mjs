@@ -174,18 +174,38 @@ try {
   // one overdue on its 1st (→ claimed once: attempts 2, still Sorting… until that attempt is overdue too).
   await step("stuck rule: 2nd failed attempt → Unsorted; 1st → one re-dispatch (Review focus 1)", async () => {
     const stuckUrl = (n) => `https://en.wikipedia.org/wiki/Stuck_${n}?pcflow=${RUN}`;
-    await sql`insert into items (url, url_key, title, domain, status, sort_attempts, created_at)
-              values (${stuckUrl(2)}, ${`en.wikipedia.org/wiki/Stuck_2?pcflow=${RUN}`}, 'Stuck twice', 'en.wikipedia.org', 'sorting', 2, now() - interval '31 minutes'),
-                     (${stuckUrl(1)}, ${`en.wikipedia.org/wiki/Stuck_1?pcflow=${RUN}`}, 'Stuck once', 'en.wikipedia.org', 'sorting', 1, now() - interval '21 minutes')`;
+    // sorted_at = the last dispatch time; both rows are 11 min past it.
+    await sql`insert into items (url, url_key, title, domain, status, sort_attempts, created_at, sorted_at)
+              values (${stuckUrl(2)}, ${`en.wikipedia.org/wiki/Stuck_2?pcflow=${RUN}`}, 'Stuck twice', 'en.wikipedia.org', 'sorting', 2, now() - interval '31 minutes', now() - interval '11 minutes'),
+                     (${stuckUrl(1)}, ${`en.wikipedia.org/wiki/Stuck_1?pcflow=${RUN}`}, 'Stuck once', 'en.wikipedia.org', 'sorting', 1, now() - interval '21 minutes', now() - interval '11 minutes')`;
     await page.reload({ waitUntil: "load" });
     await card(page, stuckUrl(2)).locator('.card-bucket:text-is("Unsorted")').waitFor({ timeout: 10_000 });
     await card(page, stuckUrl(1)).locator('.card-bucket:text-is("Sorting…")').waitFor({ timeout: 10_000 });
-    const [once] = await sql`select sort_attempts from items where url = ${stuckUrl(1)}`;
-    expect(once.sort_attempts === 2, `re-dispatch did not claim the item (attempts ${once.sort_attempts})`);
-    await page.reload({ waitUntil: "load" }); // a second load must not claim it again
+    const [once] = await sql`select sort_attempts, (sorted_at > now() - interval '1 minute') as fresh from items where url = ${stuckUrl(1)}`;
+    expect(once.sort_attempts === 2 && once.fresh, `re-dispatch did not claim the item (attempts ${once.sort_attempts}, fresh ${once.fresh})`);
+    await page.reload({ waitUntil: "load" }); // a second load must neither claim it again nor flip it to Unsorted
+    await card(page, stuckUrl(1)).locator('.card-bucket:text-is("Sorting…")').waitFor({ timeout: 10_000 });
     const [again] = await sql`select sort_attempts from items where url = ${stuckUrl(1)}`;
     expect(again.sort_attempts === 2, `claimed twice (attempts ${again.sort_attempts})`);
     await sql`delete from items where url like ${`https://en.wikipedia.org/wiki/Stuck_%?pcflow=${RUN}`}`;
+  });
+
+  // Review focus 2: an x.com post gives bots no HTML; it is saved with the oEmbed text and still filed.
+  await step(LOCAL ? "x.com post saves with the oEmbed title (no agent locally)" : "x.com post saves with the oEmbed title and is filed by the agent", async () => {
+    const tweet = `https://x.com/jack/status/20?pcflow=${RUN}`;
+    await page.fill("#url-input", tweet);
+    await page.click("#add-btn");
+    await card(page, tweet).waitFor({ state: "visible", timeout: 20_000 });
+    expect((await card(page, tweet).locator(".card-title").innerText()) === "jack on X", "oEmbed title missing");
+    if (!LOCAL) {
+      await page.waitForFunction(
+        (u) => { const c = [...document.querySelectorAll(".item-card")].find((x) => x.querySelector(`.card-title[href="${u}"]`)); const t = c?.querySelector(".card-bucket")?.textContent.trim(); return t && t !== "Sorting…"; },
+        tweet, { timeout: 5 * 60_000, polling: 2_000 },
+      );
+      console.log(`      x.com post filed as: ${(await card(page, tweet).locator(".card-bucket").first().innerText()).trim()}`);
+    }
+    await sql`delete from items where url = ${tweet}`;
+    await page.reload({ waitUntil: "load" });
   });
 
   await step("same link under www/utm/fragment/slash → Already saved toast + highlight", async () => {
@@ -475,8 +495,8 @@ try {
     await m.page.click("#suggestion-strip .suggestion-create");
     await m.page.locator("#mobile-sheet[data-open] #sheet-new-bucket-input").waitFor({ timeout: 5_000 });
     expect((await m.page.inputValue("#sheet-new-bucket-input")) === `${SUGGEST}-m`, "sheet field not pre-filled");
-    await m.page.press("#sheet-new-bucket-input", "Escape");
-    await m.page.click("#mobile-sheet .sheet-close");
+    await m.page.press("#sheet-new-bucket-input", "Escape"); // closes the field and the sheet
+    await m.page.locator("#mobile-sheet[data-open]").waitFor({ state: "detached", timeout: 5_000 });
     await m.page.click("#suggestion-strip .suggestion-dismiss");
     await m.page.locator("#suggestion-strip").waitFor({ state: "detached", timeout: 5_000 });
   });

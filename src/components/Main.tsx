@@ -92,13 +92,18 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   const polling = sorting || Date.now() < pollUntil;
   useEffect(() => {
     if (!polling) return;
-    let since = new Date(Date.now() - 10_000).toISOString();
+    // `since` is the server's clock from the previous answer (taken before its query), never this device's.
+    let since: string | null = null;
     const t = setInterval(async () => {
       try {
-        const [r, s] = await Promise.all([api(`/api/items?changedSince=${encodeURIComponent(since)}`), api("/api/suggestions")]);
-        const { items: changed } = (await r.json()) as { items: Card[] };
-        since = new Date(Date.now() - 1_000).toISOString();
-        if (changed.length) setItems((prev) => merge(prev ?? [], changed));
+        const query = since ? `changedSince=${encodeURIComponent(since)}` : `changedSince=${encodeURIComponent(new Date(Date.now() - 60_000).toISOString())}`;
+        const [r, s] = await Promise.all([api(`/api/items?${query}`), api("/api/suggestions")]);
+        const { items: changed, now } = (await r.json()) as { items: Card[]; now: string };
+        since = now;
+        if (changed.length) {
+          setItems((prev) => merge(prev ?? [], changed));
+          setResults((prev) => (prev ? merge(prev, changed.filter((c) => prev.some((p) => p.id === c.id))) : prev));
+        }
         if (changed.some((c) => c.status !== "sorting")) setPollUntil((p) => Math.max(p, Date.now() + SETTLE_POLL_MS));
         setSuggestions((await s.json()).suggestions); // a new array each tick re-renders, which re-evaluates `polling`
       } catch {}
@@ -141,6 +146,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
         show(`Already saved as #${item.number} · ${cardLabel(item)}`);
         setItems((prev) => merge(prev ?? [], [item]));
         if (!inView(item)) setView({ kind: "all" });
+        if (results && !results.some((c) => c.id === item.id)) setQ(""); // the card must be on screen to scroll to
         focusCard(item.id);
       } else {
         setItems((prev) => [item, ...(prev ?? []).filter((i) => i.id !== item.id)]);
