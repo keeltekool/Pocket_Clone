@@ -62,6 +62,8 @@ try {
   assert.ok(/digitempl/i.test(got.title) && got.pageText.length > 1000 && got.bucket === "Unsorted", JSON.stringify(got).slice(0, 200));
   assert.equal((await call("pocket_get_item", { item: URL_A })).data.number, number);
   assert.equal((await call("pocket_get_item", { item: "#999999999" })).isError, true);
+  // Past the integer column: a clean not_found, not a database range error (simplify pass, parseItemNumber).
+  assert.equal((await call("pocket_get_item", { item: "99999999999" })).data.error, "not_found");
   ok(`pocket_get_item by #, by URL, not found (#${number}, ${got.pageText.length} chars)`);
 
   const found = (await call("pocket_search", { query: `pcflow=${RUN}` })).data.items;

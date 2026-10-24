@@ -20,3 +20,11 @@ export const domainOf = (url: string) => new URL(url).hostname.replace(/^www\./,
 // The one label rule for where a link is: `Sorting…`, its bucket name, or `Unsorted`.
 export const bucketLabel = (status: "sorting" | "sorted" | "unsorted", bucketName: string | null | undefined) =>
   status === "sorting" ? "Sorting…" : (bucketName ?? "Unsorted");
+
+// A link number from a URL segment or an MCP argument: "58" or "#58" → 58. Anything else, 0, or past the integer column
+// → null, so a lookup is a clean "not found", never a database range error.
+export function parseItemNumber(s: string): number | null {
+  const m = /^#?(\d{1,10})$/.exec(s.trim());
+  const n = m ? Number(m[1]) : 0;
+  return n > 0 && n <= 2_147_483_647 ? n : null;
+}

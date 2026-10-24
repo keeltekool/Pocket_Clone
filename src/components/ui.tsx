@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 
 // Icons: inline 24-grid strokes, 2px, currentColor (the design ships no icon package).
 type IconProps = { size?: number; className?: string };
@@ -162,4 +162,27 @@ export function useDismiss(ref: RefObject<HTMLElement | null>, active: boolean, 
       document.removeEventListener("keydown", key);
     };
   }, [ref, active, onOutside]);
+}
+
+/** The bottom toast: `show(msg)` displays it for 2.5 s. Returns the node to render once per page. */
+export function useToast(): [ReactNode, (msg: string) => void] {
+  const [msg, setMsg] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const show = useCallback((text: string) => {
+    setMsg(text);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setMsg(null), 2_500);
+  }, []);
+  const node = msg && (
+    <div id="toast" role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-card-in rounded-md bg-ink px-4 py-2 text-small text-warm-white">
+      {msg}
+    </div>
+  );
+  return [node, show];
+}
+
+/** Copies `pocket #58` (the Claude Code handle) and says so. */
+export function copyPocketNumber(number: number, show: (msg: string) => void) {
+  navigator.clipboard?.writeText(`pocket #${number}`).catch(() => {});
+  show(`Copied pocket #${number}`);
 }

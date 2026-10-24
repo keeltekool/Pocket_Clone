@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { bucketSuggestions, buckets, items } from "@/db/schema";
 import { secretMatches } from "@/lib/auth";
 import { reservedName } from "@/lib/buckets";
-import { bucketLabel } from "@/lib/format";
+import { bucketLabel, parseItemNumber } from "@/lib/format";
 import { bucketCounts, fileItem, listItems, type Card } from "@/lib/items";
 import { normalizeUrl } from "@/lib/page";
 import { listOpenSuggestions } from "@/lib/suggestions";
@@ -19,8 +19,8 @@ const compact = (c: Card) => ({ number: c.number, title: c.title, domain: c.doma
 
 // "58", "#58" → by number; a URL → by its normalised key.
 async function findItem(ref: string) {
-  const n = ref.trim().match(/^#?(\d+)$/);
-  let where = n ? eq(items.number, Number(n[1])) : null;
+  const n = parseItemNumber(ref);
+  let where = n ? eq(items.number, n) : null;
   if (!where && /^https?:\/\//i.test(ref)) {
     try {
       where = eq(items.urlKey, normalizeUrl(ref.trim()));

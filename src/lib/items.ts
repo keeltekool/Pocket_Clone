@@ -54,8 +54,10 @@ export async function listItems(f: ListFilter = {}): Promise<Card[]> {
   return rows.map(toCard);
 }
 
+export type ReaderItem = Card & { pageText: string | null };
+
 // The Reader (SPEC §4.6): one card plus its saved text, by #N.
-export async function getReaderItem(number: number): Promise<(Card & { pageText: string | null }) | null> {
+export async function getReaderItem(number: number): Promise<ReaderItem | null> {
   const [row] = await db
     .select({ ...cardColumns, bucketName: buckets.name, pageText: items.pageText })
     .from(items)

@@ -5,7 +5,8 @@ import { MobileSheet } from "./MobileSheet";
 import { Sidebar, viewName } from "./Sidebar";
 import { SuggestionStrip } from "./SuggestionStrip";
 import { cardLabel, type BucketRow, type Card, type Prefill, type Suggestion, type View } from "./types";
-import { Button, EmptyState, GhostButton, IconChevron, IconClose, IconSearch, TextField } from "./ui";
+import { heartSaver, type HeartSaver } from "./heart";
+import { Button, copyPocketNumber, EmptyState, GhostButton, IconChevron, IconClose, IconSearch, TextField, useToast } from "./ui";
 
 export type InitialData = { items: Card[]; buckets: BucketRow[]; suggestions: Suggestion[]; now: string };
 const POLL_MS = 4_000;
@@ -27,20 +28,16 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   const [url, setUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Live-update poll (SPEC §4.2): runs while a card is Sorting… and until `pollUntil`; `since` is the server clock.
   const pollUntil = useRef(0);
-  // Hearts the owner set whose save has not been seen by a later poll yet: id → wanted value, and when its PATCH settled.
-  // A poll that read the database before the PATCH landed would otherwise flip the heart back (plan Review focus 1).
-  const hearts = useRef(new Map<string, { on: boolean; settledAt: number | null }>());
-  const heartQueue = useRef(new Map<string, Promise<void>>());
-  // The last heart value the server confirmed per card: what a failed save reverts to (two failed clicks end right).
-  const heartSaved = useRef(new Map<string, boolean>());
-  // Every card that arrives from the server (poll, search, move) passes through this, so a pending heart wins.
-  const withHeart = (c: Card) => (hearts.current.has(c.id) ? { ...c, favourite: hearts.current.get(c.id)!.on } : c);
+  // Hearts the owner clicked this session (SPEC §6.6a): id → the value shown. They win over every server copy of the
+  // card (poll, search, move, duplicate), which can only be older: the owner is the only writer of `favourite`.
+  const [hearts, setHearts] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const savers = useRef(new Map<string, HeartSaver>());
+  const withHeart = (c: Card) => (hearts.has(c.id) ? { ...c, favourite: hearts.get(c.id)! } : c);
+  const [toast, show] = useToast();
   const since = useRef(initial.now);
   const [pollKey, setPollKey] = useState(0);
 
@@ -56,12 +53,6 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     },
     [onExpired],
   );
-
-  const show = useCallback((msg: string) => {
-    setToast(msg);
-    clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2_500);
-  }, []);
 
   // Back from the Reader may show this page from the back/forward cache (iOS Safari) with hearts and buckets as they
   // were; a cached page reloads so the list is the server's current one.
@@ -88,7 +79,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     const t = setTimeout(() => {
       api(`/api/items?q=${encodeURIComponent(needle)}`)
         .then((r) => r.json())
-        .then((d) => !stale && setResults((d.items as Card[]).map(withHeart)))
+        .then((d) => !stale && setResults(d.items))
         .catch(() => {});
     }, 300);
     return () => {
@@ -107,13 +98,9 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     if (!sorting && Date.now() >= pollUntil.current) return;
     const t = setInterval(async () => {
       try {
-        const started = Date.now();
         const [r, s] = await Promise.all([api(`/api/items?changedSince=${encodeURIComponent(since.current)}`), api("/api/suggestions")]);
-        const { items: fetched, now } = (await r.json()) as { items: Card[]; now: string };
+        const { items: changed, now } = (await r.json()) as { items: Card[]; now: string };
         since.current = now;
-        const changed = fetched.map(withHeart);
-        // A poll that started after a heart's PATCH settled read the saved value: the override is no longer needed.
-        for (const [id, h] of hearts.current) if (h.settledAt !== null && h.settledAt < started) hearts.current.delete(id);
         if (changed.length) {
           setItems((prev) => merge(prev, changed));
           setResults((prev) => (prev ? merge(prev, changed.filter((c) => prev.some((p) => p.id === c.id))) : prev));
@@ -130,18 +117,18 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   const inView = (c: Card) =>
     view.kind === "all" ||
     (view.kind === "unsorted" ? c.status === "unsorted" : view.kind === "favourites" ? c.favourite : c.bucket?.id === view.id);
-  const visible = (results ?? items).filter(inView);
+  const visible = (results ?? items).map(withHeart).filter(inView);
   const counts = useMemo(() => {
     const perBucket = new Map<string, number>();
     let unsorted = 0;
     let favourites = 0;
     for (const i of items) {
       if (i.status === "unsorted") unsorted++;
-      if (i.favourite) favourites++;
+      if (hearts.get(i.id) ?? i.favourite) favourites++;
       if (i.bucket) perBucket.set(i.bucket.id, (perBucket.get(i.bucket.id) ?? 0) + 1);
     }
     return { all: items.length, unsorted, favourites, bucket: (id: string) => perBucket.get(id) ?? 0 };
-  }, [items]);
+  }, [items, hearts]);
 
   function focusCard(id: string) {
     setHighlight(id);
@@ -173,8 +160,8 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       setUrl("");
       if (body.duplicate) {
         show(`Already saved as #${item.number} · ${cardLabel(item)}`);
-        setItems((prev) => merge(prev, [withHeart(item)]));
-        if (!inView(item)) setView({ kind: "all" });
+        setItems((prev) => merge(prev, [item]));
+        if (!inView(withHeart(item))) setView({ kind: "all" });
         if (results && !results.some((c) => c.id === item.id)) setQ(""); // the card must be on screen to scroll to
         focusCard(item.id);
       } else {
@@ -189,43 +176,30 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ bucketId }) });
       if (!r.ok) throw new Error();
       const { item: updated } = (await r.json()) as { item: Card };
-      patchCards((c) => (c.id === updated.id ? withHeart(updated) : c));
+      patchCards((c) => (c.id === updated.id ? updated : c));
     }, "Couldn't move. Try again.");
 
-  // Heart (SPEC §6.6a): flips at once and sends the new value. Saves for one card go out one after another, so two quick
-  // clicks reach the server in click order; a failed save flips the card back unless a newer click has replaced it.
+  // Heart: `item` is the card as shown, so the click flips what the owner sees. One saver per card (components/heart.ts).
   function favourite(item: Card) {
-    const on = !item.favourite;
-    const flip = (v: boolean) => patchCards((c) => (c.id === item.id ? { ...c, favourite: v } : c));
-    if (!hearts.current.has(item.id)) heartSaved.current.set(item.id, item.favourite); // nothing pending: the UI is the server
-    const mine = { on, settledAt: null as number | null };
-    hearts.current.set(item.id, mine);
-    flip(on);
-    const save = () =>
-      attempt(async () => {
-        try {
-          // keepalive: the save still lands when the owner leaves the page right after the click.
-          const r = await api(`/api/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ favourite: on }), keepalive: true });
-          if (!r.ok) throw new Error();
-          heartSaved.current.set(item.id, on);
-        } catch (err) {
-          if (hearts.current.get(item.id) === mine) {
-            hearts.current.delete(item.id);
-            flip(heartSaved.current.get(item.id) ?? !on);
-          }
-          throw err;
-        }
-      }, "Couldn't update. Try again.").then(() => {
-        mine.settledAt = Date.now();
-      });
-    heartQueue.current.set(item.id, (heartQueue.current.get(item.id) ?? Promise.resolve()).then(save));
+    let saver = savers.current.get(item.id);
+    if (!saver) {
+      saver = heartSaver(
+        item.id,
+        item.favourite,
+        (on) => setHearts((m) => new Map(m).set(item.id, on)),
+        (sessionEnded) => (sessionEnded ? onExpired() : show("Couldn't update. Try again.")),
+      );
+      savers.current.set(item.id, saver);
+    }
+    saver.save(!item.favourite);
   }
 
   // Read while this card's heart is still saving: open the Reader after the save, so it shows the new value.
   function openReader(e: MouseEvent, item: Card) {
-    if (hearts.current.get(item.id)?.settledAt !== null || !heartQueue.current.has(item.id)) return;
+    const saver = savers.current.get(item.id);
+    if (!saver?.pending()) return;
     e.preventDefault();
-    heartQueue.current.get(item.id)!.then(() => location.assign(`/read/${item.number}`));
+    saver.settled().then(() => location.assign(`/read/${item.number}`));
   }
 
   const remove = (item: Card) =>
@@ -292,10 +266,6 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
 
   const logout = () => fetch("/api/auth", { method: "DELETE" }).catch(() => {}).then(onExpired);
 
-  function copyNumber(item: Card) {
-    navigator.clipboard?.writeText(`pocket #${item.number}`).catch(() => {});
-    show(`Copied pocket #${item.number}`);
-  }
 
   const nav = {
     buckets, counts, view, onView: setView, onCreate: createBucket, onRename: renameBucket, onDelete: deleteBucket,
@@ -398,7 +368,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
                   index={i}
                   buckets={buckets}
                   highlight={highlight === c.id}
-                  onCopy={() => copyNumber(c)}
+                  onCopy={() => copyPocketNumber(c.number, show)}
                   onMove={(bucketId) => move(c, bucketId)}
                   onDelete={() => remove(c)}
                   onFavourite={() => favourite(c)}
@@ -412,11 +382,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
 
       <MobileSheet open={sheetOpen} onClose={() => setSheetOpen(false)} {...nav} onView={(v) => { setView(v); setSheetOpen(false); }} />
 
-      {toast && (
-        <div id="toast" role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-card-in rounded-md bg-ink px-4 py-2 text-small text-warm-white">
-          {toast}
-        </div>
-      )}
+      {toast}
     </div>
   );
 }

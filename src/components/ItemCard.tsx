@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { favicon, timeAgo } from "@/lib/format";
+import { chipClass } from "./styles";
 import { cardLabel, type BucketRow, type Card } from "./types";
 import { HeartButton, IconChevron, IconFolder, IconTrash, Menu, MenuItem, useDismiss } from "./ui";
 
@@ -71,14 +72,14 @@ export function ItemCard({ item, index, buckets, highlight, onCopy, onMove, onDe
           type="button"
           title={`Copy pocket #${item.number}`}
           onClick={onCopy}
-          className="card-number cursor-pointer whitespace-nowrap rounded-sm border border-cream-dark bg-cream px-2 py-1 text-micro font-semibold text-ink-muted tabular-nums transition-all duration-150 hover:border-ink-faint hover:bg-cream-dark hover:text-terracotta"
+          className={`card-number cursor-pointer tabular-nums ${chipClass}`}
         >
           #{item.number}
         </button>
         <a
           href={`/read/${item.number}`}
           onClick={onRead}
-          className="card-read whitespace-nowrap rounded-sm border border-cream-dark bg-cream px-2 py-1 text-micro font-semibold text-ink-muted transition-all duration-150 hover:border-ink-faint hover:bg-cream-dark hover:text-terracotta"
+          className={`card-read ${chipClass}`}
         >
           Read
         </a>
