@@ -2,8 +2,9 @@
 
 > Save-for-later link manager: the owner adds a link (iPhone Shortcut, desktop bookmarklet, paste box), a Claude Managed
 > Agent on Fable 5.1 reads the page and files it into one of his buckets, `pocket #N` pulls it into Claude Code over MCP.
-> Single owner, password gate. v2 (Next.js rebuild) built 24.10.2026 from `docs/SPEC.md` + `docs/plans/2026-10-24-pocket-clone-v2.md`.
-> Last updated: 2026-10-24
+> Single owner, password gate. v2 (Next.js rebuild) built 24.10.2026 from `docs/SPEC.md` + `docs/plans/2026-10-24-pocket-clone-v2.md`;
+> v2.1 (Reader `/read/N` + Favourite heart) the same evening, `docs/plans/2026-10-24-reader-favourite.md`.
+> Last updated: 2026-10-24 (v2.1)
 
 ## Stack
 
@@ -29,10 +30,10 @@ Env vars stored in: Vercel (production), `.env.local` (local). `vercel env add` 
 
 ```bash
 npm run build && npx next start -p 3100      # local checks (never `next dev` from a background shell on Windows)
-node scripts/check-page.mjs                  # normalizeUrl / firstUrl / one real fetch (Dokobit) / PDF → nulls
+node scripts/check-page.mjs                  # normalizeUrl / firstUrl / paragraphs() + 60k cap / real fetch (Dokobit) / PDF → nulls
 node scripts/check-api.mjs http://localhost:3100    # 16 HTTP steps incl. /api/save
 node scripts/check-mcp.mjs http://localhost:3100    # 401 + initialize + all six pocket_* tools
-node scripts/check-ui-flows.mjs [baseUrl]    # click-through 375/1440/1920; on prod waits for the real agent (5 min)
+node scripts/check-ui-flows.mjs [baseUrl]    # click-through 375/1440/1920 (+820 touch), Reader + hearts; prod waits for the agent
 node scripts/check-agent.mjs                 # prod: 3 real saves → filed buckets, cost per sort, claude -p "pocket #N"
 npm run agent:sync                           # idempotent Managed Agents setup (env, vault + token, agent prompt/model)
 node ~/.claude/scripts/ship.mjs / /setup     # push → Vercel git deploy → verify-deploy + check-ui-flows on prod
@@ -40,7 +41,8 @@ node ~/.claude/scripts/ship.mjs / /setup     # push → Vercel git deploy → ve
 
 Measured 24.10.2026 on prod: a sort takes 6–9 s and costs $0.03–0.06 at list prices (average $0.04); the spec estimated
 $0.20–0.50. The v1 → v2 migration (`scripts/migrate-v2.mjs`, explicit SQL, seeds the 8 buckets) ran once on 24.10 and was
-removed; `src/db/schema.ts` is the schema record.
+removed; `src/db/schema.ts` is the schema record. The v2.1 migration (`scripts/migrate-v21.mjs`: `items.favourite` + a
+one-off re-fetch of every item's text with paragraphs) ran on 24.10 and was removed the same way (it is in git history).
 
 Flow scripts write only marker rows (`?pcflow=<run>` URLs, `pcflow-<run>` buckets/suggestions) and delete them in `finally`.
 
@@ -60,6 +62,9 @@ Flow scripts write only marker rows (`?pcflow=<run>` URLs, `pcflow-<run>` bucket
 | Vercel Hobby: 100 deployments per rolling 24 h for the whole account | Count first (`ad-hoc-analysis/security-sweep-2026-10/deps-scripts/vcount.mjs`); ship only at gates |
 | Login box blank (Oct 2026, v1): `clerk-js@latest` became v6 | Clerk removed for the password gate; never load CDN scripts as `@latest` |
 | x.com / LinkedIn give no text to bots | x.com via `publish.twitter.com/oembed`; others sort on title + URL |
+| Readability's `textContent` has no paragraph breaks; the Reader needs them | `serializer: (el) => el` + `paragraphs()` in `lib/page.ts`; never trim after the 60,000 cut: the Reader's "text ends here" test is `length >= MAX_TEXT` |
+| A server copy of a card (poll, search, move) can carry a heart older than the owner's last click | Hearts clicked this session are client state in `Main.tsx` and win over server copies; saves per card go through `components/heart.ts` (click order, keepalive) |
+| `not-found.tsx` gets no route params | Read the segment with `usePathname()` (`/read/[number]/not-found.tsx`) |
 | Page `/add` is a 420×260 popup | The compact login variant (`<Login compact>`) fits it; test at that viewport |
 
 ## Deployment
