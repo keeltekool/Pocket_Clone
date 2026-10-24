@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { sameView, type BucketRow, type View } from "./types";
 import { Count, IconDots, IconPencil, IconTrash, Menu, MenuItem, useDismiss } from "./ui";
 
@@ -11,6 +11,8 @@ export type NavProps = {
   onCreate: (name: string) => Promise<string | null>;
   onRename: (b: BucketRow) => void;
   onDelete: (b: BucketRow) => void;
+  /** Name pre-filled into the new-bucket field (from a suggestion's Create bucket). */
+  prefill?: string | null;
 };
 
 export const viewName = (view: View, buckets: BucketRow[]) =>
@@ -27,7 +29,7 @@ export function Sidebar(p: NavProps) {
       {p.buckets.map((b) => (
         <BucketRowItem key={b.id} bucket={b} {...p} />
       ))}
-      <NewBucket onCreate={p.onCreate} />
+      <NewBucket onCreate={p.onCreate} prefill={p.prefill} />
     </nav>
   );
 }
@@ -83,17 +85,25 @@ function BucketRowItem({ bucket, counts, view, onView, onRename, onDelete }: Nav
 }
 
 // Dashed "+ New bucket" row → inline name field; Enter creates, Escape cancels. Shared by the sidebar and the sheet.
-export function NewBucket({ onCreate, prefill, onDone }: { onCreate: (name: string) => Promise<string | null>; prefill?: string; onDone?: () => void }) {
+export function NewBucket({ onCreate, prefill }: { onCreate: (name: string) => Promise<string | null>; prefill?: string | null }) {
   const [editing, setEditing] = useState(!!prefill);
   const [name, setName] = useState(prefill ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // A suggestion's Create bucket opens the field with the name in it; the owner can edit, Enter creates.
+  useEffect(() => {
+    if (prefill) {
+      setName(prefill);
+      setEditing(true);
+      setError(null);
+    }
+  }, [prefill]);
+
   function cancel() {
     setEditing(false);
     setName("");
     setError(null);
-    onDone?.();
   }
   async function submit(e: FormEvent) {
     e.preventDefault();

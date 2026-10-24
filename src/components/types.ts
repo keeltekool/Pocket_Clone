@@ -14,6 +14,8 @@ export type Card = {
 
 export type BucketRow = { id: string; name: string };
 
+export type Suggestion = { id: string; name: string; reason: string; itemNumbers: number[]; createdAt: string };
+
 export type View = { kind: "all" } | { kind: "unsorted" } | { kind: "bucket"; id: string };
 
 export const sameView = (a: View, b: View) => a.kind === b.kind && (a.kind !== "bucket" || b.kind !== "bucket" || a.id === b.id);

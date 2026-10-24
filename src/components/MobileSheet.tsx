@@ -6,7 +6,7 @@ import { Count, IconClose, IconDots, IconPencil, IconTrash, Menu, MenuItem } fro
 
 // Phone filter (SPEC §4.5): bottom sheet "Filter by bucket" with All links, Unsorted and the buckets; tap selects and
 // closes. Bucket ⋮ and + New bucket live here too, since phones have no sidebar.
-export function MobileSheet({ open, onClose, buckets, counts, view, onView, onCreate, onRename, onDelete }: NavProps & { open: boolean; onClose: () => void }) {
+export function MobileSheet({ open, onClose, buckets, counts, view, onView, onCreate, onRename, onDelete, prefill }: NavProps & { open: boolean; onClose: () => void }) {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
@@ -82,7 +82,7 @@ export function MobileSheet({ open, onClose, buckets, counts, view, onView, onCr
           {row("Unsorted", counts.unsorted, { kind: "unsorted" })}
           <div className="mx-4 my-2 h-px bg-cream-dark" />
           {buckets.map((b) => row(b.name, counts.bucket(b.id), { kind: "bucket", id: b.id }, b))}
-          <NewBucket onCreate={onCreate} />
+          <NewBucket onCreate={onCreate} prefill={open ? prefill : null} />
         </div>
       </div>
     </div>
