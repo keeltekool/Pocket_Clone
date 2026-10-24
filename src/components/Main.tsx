@@ -61,6 +61,14 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     toastTimer.current = setTimeout(() => setToast(null), 2_500);
   }, []);
 
+  // Back from the Reader may show this page from the back/forward cache (iOS Safari) with hearts and buckets as they
+  // were; a cached page reloads so the list is the server's current one.
+  useEffect(() => {
+    const restored = (e: PageTransitionEvent) => e.persisted && location.reload();
+    window.addEventListener("pageshow", restored);
+    return () => window.removeEventListener("pageshow", restored);
+  }, []);
+
   // The view lives in the URL too (SPEC §4.2 routes), without a navigation.
   useEffect(() => {
     const href = view.kind === "all" ? "/" : view.kind === "bucket" ? `/?bucket=${view.id}` : `/?view=${view.kind}`;

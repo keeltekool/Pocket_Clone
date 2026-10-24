@@ -48,7 +48,9 @@ async function step(name, fn) {
 }
 const expect = (ok, msg) => { if (!ok) throw new Error(msg); };
 
-const browser = await chromium.launch();
+// Playwright turns the back/forward cache off by default; real browsers (iOS Safari, Chrome) restore pages from it,
+// so it stays on here (Gate 2 review: Back from the Reader must not show a stale list).
+const browser = await chromium.launch({ ignoreDefaultArgs: ["--disable-back-forward-cache"] });
 const consoleErrors = [];
 // Deliberate 4xx replies (wrong password, invalid link, cap) are logged by the browser as resource errors; drop those.
 const deliberate = (t) => /status of (400|401|409|429)/.test(t);
@@ -411,6 +413,23 @@ try {
     await card(page).hover();
     await heart(page).click(); // back to off for the steps below
     await page.click('.sidebar-item[data-view="all"]');
+  });
+
+  // Gate 2 review I1: iOS Safari may show the list from its back/forward cache after the Reader, with the old hearts.
+  // Chromium does not cache this no-store page, so the restore is simulated: the event a restore fires, after the heart
+  // changed elsewhere. The list must reload and show the saved value.
+  await step("list shown from the back/forward cache reloads with the current hearts (Gate 2 review I1)", async () => {
+    await page.goto(BASE, { waitUntil: "load" });
+    await card(page).waitFor({ timeout: 10_000 });
+    expect((await heart(page).getAttribute("aria-pressed")) === "false", "start state");
+    await sql`update items set favourite = true where url = ${TEST_URL}`; // as if hearted on the Reader
+    const reloaded = page.waitForEvent("load", { timeout: 5_000 });
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+    await reloaded;
+    await card(page).waitFor({ timeout: 10_000 });
+    expect((await heart(page).getAttribute("aria-pressed")) === "true", "list kept the stale heart");
+    await sql`update items set favourite = false where url = ${TEST_URL}`;
+    await page.reload({ waitUntil: "load" });
   });
 
   await step("Reader states: no text → No text was saved; 60,000 chars → The saved text ends here.; page text is never HTML", async () => {
@@ -808,6 +827,9 @@ try {
     await m.page.goto(`${BASE}/setup`, { waitUntil: "load" });
     await m.page.locator("#auth-form").waitFor({ state: "visible", timeout: 10_000 });
     expect((await m.page.locator("#shortcut-key").count()) === 0, "key rendered while logged out");
+    await m.page.goto(`${BASE}/read/1`, { waitUntil: "load" }); // session is checked before the number
+    await m.page.locator("#auth-form").waitFor({ state: "visible", timeout: 10_000 });
+    expect((await m.page.locator("h1.reader-title").count()) === 0, "reader shown while logged out at 375");
   });
   await m.ctx.close();
 
@@ -832,13 +854,15 @@ try {
       await expectOpacity(outline, "0", "outline heart visible without hover at 1920");
     }
     await w.page.screenshot({ path: join(OUT, "1920-app.png") });
-    if (await w.page.locator(".card-read").count()) {
-      await w.page.locator(".card-read").first().click();
+    {
+      const marker = await readerRow("w1920", "First paragraph of the 1920 check.\n\nSecond paragraph.");
+      await w.page.goto(`${BASE}/read/${marker.number}`, { waitUntil: "load" });
       await w.page.locator("h1.reader-title").waitFor({ timeout: 10_000 });
       const r = await w.page.evaluate(() => ({ aside: document.querySelector("aside").getBoundingClientRect().toJSON(), body: document.querySelector(".reader-body").getBoundingClientRect().toJSON() }));
       expect(r.aside.width >= 250 && r.aside.right <= r.body.left && r.body.width <= 680, `1920 reader composition: ${JSON.stringify(r)}`);
       await w.page.waitForTimeout(700); // entrance fade
-    await w.page.screenshot({ path: join(OUT, "1920-reader.png") });
+      await w.page.screenshot({ path: join(OUT, "1920-reader.png") });
+      await sql`delete from items where url = ${marker.url}`;
       await w.page.goto(BASE, { waitUntil: "load" });
     }
     await w.page.goto(`${BASE}/setup`, { waitUntil: "load" });
@@ -849,6 +873,9 @@ try {
     await w.page.locator("#logout-btn").waitFor({ timeout: 10_000 });
     await w.page.click("#logout-btn");
     await w.page.locator("#auth-form").waitFor({ state: "visible", timeout: 5_000 });
+    await w.page.goto(`${BASE}/read/1`, { waitUntil: "load" });
+    await w.page.locator("#auth-form").waitFor({ state: "visible", timeout: 10_000 });
+    expect((await w.page.locator("h1.reader-title").count()) === 0, "reader shown while logged out at 1920");
   });
   await w.ctx.close();
 

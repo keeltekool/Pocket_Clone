@@ -127,6 +127,23 @@ gets no params); the desktop rail + text is one centred group (`max-w` 58.5rem /
 build clean, `check-page` ok (Dokobit 24 paragraphs), `check-api` 18/18, `check-mcp` 10/10, `check-ui-flows` 53/53,
 Impeccable detector `[]`. Prod item #125 re-fetched: 40 paragraphs.
 
+**Gate 2 review (24.10.2026), verdict "not ready" → answered:**
+- I1 Back may show a stale list from the back/forward cache → fixed: `Main.tsx` reloads on `pageshow` with
+  `persisted`. The flow browser now runs with the cache on (Playwright disables it by default); Chromium still does not
+  cache these `no-store` pages (probe: `navType back_forward`, page not restored, also with
+  `CacheControlNoStoreEnterBackForwardCache`), so the step fires the restore event itself after changing the heart in
+  the database: it failed on the old build (no reload) and passes now. Not verified: whether iOS Safari caches the page
+  (WebKit for Playwright is not installed; installing it needs the owner's go).
+- M1 malformed escape on the 404 page → decoded in try/catch. M3 1920 Reader → runs on its own marker row, never
+  skipped. M5 logged-out Reader → also checked at 375 and 1920. M6 cut at the cap → `trimEnd()`, asserted in
+  `check-page` with a cut that lands right after a break.
+- M4 deviation: the empty-text state is proved on a marker row with `page_text` null; that a PDF save stores null is
+  proved in `check-page` ("non-HTML gives nulls"). M2 toast shadow: the toast copies the existing app toast and the
+  Livery package's shadow tokens; changing the design system's toast is outside this build. M7 `getReaderItem`
+  repeating the card select → left to `/simplify`.
+- Local run after the fixes: build clean, `check-page` ok, `check-api` 18/18, `check-mcp` 10/10,
+  `check-ui-flows` 54/54.
+
 ## Finish
 
 `node ~/.claude/scripts/review.mjs` → respond to every finding in `docs/reviews/`; `/simplify`; count the Vercel window

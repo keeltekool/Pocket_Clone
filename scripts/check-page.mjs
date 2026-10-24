@@ -27,6 +27,11 @@ const body = (html) => parseHTML(`<html><body>${html}</body></html>`).document.b
 assert.equal(paragraphs(body("<p>a  b</p><ul><li>c</li><li>d</li></ul>")), "a b\n\nc\n\nd");
 assert.equal(paragraphs(body("<p>one <b>bold</b>\n word</p><div><p>two</p></div>line<br>break")), "one bold word\n\ntwo\n\nline\n\nbreak");
 assert.equal(paragraphs(body("<p> </p><div>\n</div>")), null);
+// At the 60,000 cap (Gate 2 review M6): the cut leaves no trailing break and no paragraph holds a newline.
+// 98 chars + "\n\n" = 100 per paragraph, so the 60,000 cut lands right after a break: the case trimEnd() exists for.
+const capped = paragraphs(body(Array.from({ length: 700 }, () => `<p>${"y".repeat(98)}</p>`).join("")));
+assert.ok(capped.length <= 60_000 && capped === capped.trimEnd(), "cut left a trailing break");
+assert.ok(capped.split("\n\n").every((p) => p && !p.includes("\n")), "malformed paragraph at the cap");
 console.log("paragraphs: ok");
 
 const page = await fetchPage("https://www.dokobit.com/et/blog/kuidas-kasutada-digitemplit-naited-reaalsest-elust");
