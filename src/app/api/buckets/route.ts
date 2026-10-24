@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { bucketSuggestions, buckets } from "@/db/schema";
-import { badRequest } from "@/lib/auth";
-import { cleanName, conflict, duplicateName, isUuid } from "@/lib/buckets";
+import { cleanName, duplicateName, isUuid } from "@/lib/buckets";
+import { badRequest, conflict } from "@/lib/http";
 import { bucketCounts } from "@/lib/items";
 import { dispatchBucketCreated } from "@/lib/sorter";
 

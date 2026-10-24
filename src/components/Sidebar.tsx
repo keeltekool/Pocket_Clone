@@ -54,35 +54,43 @@ function NavItem({ label, count, active, onClick, view, children }: { label: str
 }
 
 function BucketRowItem({ bucket, counts, view, onView, onRename, onDelete }: NavProps & { bucket: BucketRow }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, open, () => setOpen(false));
   const active = sameView(view, { kind: "bucket", id: bucket.id });
   return (
     <NavItem label={bucket.name} count={counts.bucket(bucket.id)} active={active} onClick={() => onView({ kind: "bucket", id: bucket.id })} view={bucket.id}>
-      <div ref={ref} className="relative">
-        {/* Hover-only on pointers; always visible on touch (SPEC §10). */}
-        <button
-          type="button"
-          title="Options"
-          aria-label={`Options for ${bucket.name}`}
-          onClick={() => setOpen((o) => !o)}
-          className={`bucket-menu-btn mr-1 flex cursor-pointer items-center justify-center rounded-sm p-1 text-ink-muted transition-all duration-150 hover:bg-cream-dark hover:text-ink group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${open ? "opacity-100" : "opacity-0"}`}
-        >
-          <IconDots />
-        </button>
-        {open && (
-          <Menu id="bucket-context-menu" className="absolute top-full right-0 min-w-menu">
-            <MenuItem icon={<IconPencil />} onClick={() => { setOpen(false); onRename(bucket); }}>
-              Rename
-            </MenuItem>
-            <MenuItem icon={<IconTrash size={14} />} danger onClick={() => { setOpen(false); onDelete(bucket); }}>
-              Delete
-            </MenuItem>
-          </Menu>
-        )}
-      </div>
+      <BucketMenu bucket={bucket} onRename={onRename} onDelete={onDelete} hoverOnly />
     </NavItem>
+  );
+}
+
+/** The bucket ⋮ button and its Rename · Delete menu, shared by the sidebar row and the phone sheet row. */
+export function BucketMenu({ bucket, onRename, onDelete, hoverOnly }: { bucket: BucketRow; onRename: (b: BucketRow) => void; onDelete: (b: BucketRow) => void; hoverOnly?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(ref, open, () => setOpen(false));
+  // Hover-only on pointers in the sidebar; always visible on touch and in the sheet (SPEC §10).
+  const visibility = hoverOnly ? `group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${open ? "opacity-100" : "opacity-0"}` : "";
+  return (
+    <div ref={ref} className="relative mr-1">
+      <button
+        type="button"
+        title="Options"
+        aria-label={`Options for ${bucket.name}`}
+        onClick={() => setOpen((o) => !o)}
+        className={`bucket-menu-btn flex cursor-pointer items-center justify-center rounded-sm p-1 text-ink-muted transition-all duration-150 hover:bg-cream-dark hover:text-ink ${visibility}`}
+      >
+        <IconDots />
+      </button>
+      {open && (
+        <Menu id="bucket-context-menu" className="absolute top-full right-0 min-w-menu">
+          <MenuItem icon={<IconPencil />} onClick={() => { setOpen(false); onRename(bucket); }}>
+            Rename
+          </MenuItem>
+          <MenuItem icon={<IconTrash size={14} />} danger onClick={() => { setOpen(false); onDelete(bucket); }}>
+            Delete
+          </MenuItem>
+        </Menu>
+      )}
+    </div>
   );
 }
 

@@ -16,10 +16,10 @@ let client: Anthropic | undefined;
 const anthropic = () => (client ??= new Anthropic({ timeout: 20_000, maxRetries: 1 }));
 
 async function startSession(title: string, message: string): Promise<string | null> {
+  // Local runs (`POCKET_AGENT=off` in .env.local): the agent can only reach the deployed /api/mcp, so no session is
+  // started; the counted attempt then goes stale and the stuck rule turns the item Unsorted.
+  if (process.env.POCKET_AGENT === "off") return null;
   try {
-    // Local runs (`POCKET_AGENT=off` in .env.local): the agent can only reach the deployed /api/mcp, so no session is
-    // started; the item counts a failed attempt and the stuck rule turns it Unsorted.
-    if (process.env.POCKET_AGENT === "off") throw new Error("POCKET_AGENT=off");
     const session = await anthropic().beta.sessions.create({
       agent: ids.agent_id,
       environment_id: ids.environment_id,
@@ -40,37 +40,30 @@ async function sortSession(number: number) {
   if (sessionId) await db.update(items).set({ sortSessionId: sessionId }).where(eq(items.number, number));
 }
 
-// One session per save. The attempt is counted (and timed, in sortedAt) now; the session starts after the response.
-// A failed start still counts: the stuck rule retries once, then the item becomes Unsorted (SPEC §6.4).
-export async function dispatchSort(number: number): Promise<void> {
-  await db
-    .update(items)
-    .set({ sortAttempts: sql`${items.sortAttempts} + 1`, sortedAt: sql`now()` })
-    .where(eq(items.number, number));
-  after(() => sortSession(number));
-}
+// One session per save; the save already counted and timed the attempt (sortAttempts 1, sortedAt now).
+export const dispatchSort = (number: number) => after(() => sortSession(number));
 
 // Bucket created by the owner (SPEC §6.5): the agent checks every Unsorted link against the new bucket only.
-export function dispatchBucketCreated(name: string): void {
+export const dispatchBucketCreated = (name: string) =>
   after(() => startSession(`bucket "${name}"`, `Bucket "${name}" was created. Move the Unsorted links that belong in it.`));
-}
 
 // Stuck items (SPEC §6.4), run whenever the main list is rendered or fetched: still `sorting` 10 min after the last
-// dispatch (sortedAt; createdAt before the first) → dispatch again while attempts < 2, otherwise Unsorted. No cron, no
-// error UI. The claim is one UPDATE (attempts and time bumped in the same statement), so two devices loading at once
-// start one session, not two. Cutoffs are computed in SQL: a JS Date in an untyped comparison goes out in local time.
+// dispatch (sortedAt) → dispatch again while attempts < 2, otherwise Unsorted. No cron, no error UI. One batch (one
+// round trip): out-of-attempts items flip first, then the rest are claimed in a single UPDATE that bumps attempts and
+// time, so two devices loading at once start one session, not two. Cutoffs are computed in SQL: a JS Date in an
+// untyped comparison goes out in local time. sortedAt is bumped so an open page's poll sees the change.
 export async function retryStuck(): Promise<void> {
   const overdue = and(
     eq(items.status, "sorting"),
     lt(sql`coalesce(${items.sortedAt}, ${items.createdAt}) + ${sql.raw(`interval '${STUCK_MINUTES} minutes'`)}`, sql`now()`),
   );
-  // Out of attempts first (a just-claimed item must not be flipped in the same pass). sortedAt is bumped so an open
-  // page's changedSince poll picks the change up and stops.
-  await db.update(items).set({ status: "unsorted", sortedAt: sql`now()` }).where(and(overdue, gte(items.sortAttempts, MAX_ATTEMPTS)));
-  const claimed = await db
-    .update(items)
-    .set({ sortAttempts: sql`${items.sortAttempts} + 1`, sortedAt: sql`now()` })
-    .where(and(overdue, lt(items.sortAttempts, MAX_ATTEMPTS)))
-    .returning({ number: items.number });
+  const [, claimed] = await db.batch([
+    db.update(items).set({ status: "unsorted", sortedAt: sql`now()` }).where(and(overdue, gte(items.sortAttempts, MAX_ATTEMPTS))),
+    db
+      .update(items)
+      .set({ sortAttempts: sql`${items.sortAttempts} + 1`, sortedAt: sql`now()` })
+      .where(and(overdue, lt(items.sortAttempts, MAX_ATTEMPTS)))
+      .returning({ number: items.number }),
+  ]);
   for (const { number } of claimed) after(() => sortSession(number));
 }

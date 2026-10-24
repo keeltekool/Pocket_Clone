@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { domainOf } from "@/lib/format";
 import { Login } from "./Login";
 import { cardLabel, type Card } from "./types";
 import { GhostButton } from "./ui";
@@ -12,7 +13,7 @@ export function AddClient({ authed: initialAuthed, url }: { authed: boolean; url
   const [state, setState] = useState<State>({ kind: "saving" });
   let domain = "";
   try {
-    domain = new URL(url).hostname.replace(/^www\./, "");
+    domain = domainOf(url);
   } catch {}
 
   const save = useCallback(async () => {

@@ -16,8 +16,6 @@ export function normalizeUrl(url: string): string {
   return `${host}${path}${query ? `?${query}` : ""}`;
 }
 
-export const domainOf = (url: string) => new URL(url).hostname.replace(/^www\./, "");
-
 // First http(s) URL in free text (shared text from some iPhone apps wraps the link in words).
 export function firstUrl(text: string): string | null {
   const m = String(text).match(/https?:\/\/[^\s<>"'`]+/i);
@@ -35,7 +33,7 @@ export function firstUrl(text: string): string | null {
   }
 }
 
-export type PageData = { title: string | null; imageUrl: string | null; text: string | null };
+type PageData = { title: string | null; imageUrl: string | null; text: string | null };
 const NONE: PageData = { title: null, imageUrl: null, text: null };
 const squash = (s: string | null | undefined) => (s || "").replace(/\s+/g, " ").trim() || null;
 

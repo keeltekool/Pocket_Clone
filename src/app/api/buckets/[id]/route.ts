@@ -1,11 +1,10 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { buckets, items } from "@/db/schema";
-import { badRequest } from "@/lib/auth";
-import { cleanName, conflict, duplicateName, isUuid } from "@/lib/buckets";
+import { cleanName, duplicateName, isUuid } from "@/lib/buckets";
+import { badRequest, conflict, notFound } from "@/lib/http";
 
 type Ctx = { params: Promise<{ id: string }> };
-const notFound = () => Response.json({ error: "Not found" }, { status: 404 });
 
 export async function PATCH(req: Request, { params }: Ctx) {
   const { id } = await params;

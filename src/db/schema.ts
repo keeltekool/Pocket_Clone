@@ -3,9 +3,9 @@ import { index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, va
 
 // Single owner: no user column anywhere. Created by scripts/migrate-v2.mjs (explicit SQL, same shape as here).
 
-export const itemStatus = pgEnum("item_status", ["sorting", "sorted", "unsorted"]);
-export const sortedBy = pgEnum("sorted_by", ["agent", "owner"]);
-export const suggestionStatus = pgEnum("suggestion_status", ["open", "dismissed", "created"]);
+const itemStatus = pgEnum("item_status", ["sorting", "sorted", "unsorted"]);
+const sortedBy = pgEnum("sorted_by", ["agent", "owner"]);
+const suggestionStatus = pgEnum("suggestion_status", ["open", "dismissed", "created"]);
 
 export const buckets = pgTable(
   "buckets",
@@ -55,7 +55,3 @@ export const loginFailures = pgTable(
   },
   (t) => [index("idx_login_failures_created_at").on(t.createdAt)],
 );
-
-export type Item = typeof items.$inferSelect;
-export type Bucket = typeof buckets.$inferSelect;
-export type BucketSuggestion = typeof bucketSuggestions.$inferSelect;

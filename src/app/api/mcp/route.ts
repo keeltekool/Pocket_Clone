@@ -1,24 +1,20 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-import { desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { db } from "@/db";
 import { bucketSuggestions, buckets, items } from "@/db/schema";
+import { secretMatches } from "@/lib/auth";
+import { bucketLabel } from "@/lib/format";
+import { bucketCounts, fileItem, listItems, type Card } from "@/lib/items";
 import { normalizeUrl } from "@/lib/page";
-import { listItems, type Card } from "@/lib/items";
+import { listOpenSuggestions } from "@/lib/suggestions";
 
 export const maxDuration = 60;
 
 // MCP server "pocket" (SPEC §8): used by Claude Code (`pocket #58`) and by the sorting agent. Bearer MCP_TOKEN.
 const text = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 1) }] });
 const fail = (error: string, extra: Record<string, unknown> = {}) => ({ ...text({ error, ...extra }), isError: true });
-const compact = (c: Card) => ({
-  number: c.number,
-  title: c.title,
-  domain: c.domain,
-  bucket: c.status === "sorting" ? "Sorting…" : (c.bucket?.name ?? "Unsorted"),
-  savedAt: c.createdAt,
-});
+const compact = (c: Card) => ({ number: c.number, title: c.title, domain: c.domain, bucket: bucketLabel(c.status, c.bucket?.name), savedAt: c.createdAt });
 
 // "58", "#58" → by number; a URL → by its normalised key.
 async function findItem(ref: string) {
@@ -65,7 +61,7 @@ const handler = createMcpHandler(
           title: i.title,
           url: i.url,
           domain: i.domain,
-          bucket: i.status === "sorting" ? "Sorting…" : (row.bucketName ?? "Unsorted"),
+          bucket: bucketLabel(i.status, row.bucketName),
           status: i.status,
           sortedBy: i.sortedBy,
           savedAt: i.createdAt,
@@ -110,26 +106,22 @@ const handler = createMcpHandler(
         inputSchema: z.object({}),
       },
       async () => {
-        const all = await db.select().from(buckets).orderBy(buckets.createdAt);
-        const rows = await Promise.all(
-          all.map(async (b) => {
-            const recent = await db.select({ title: items.title }).from(items).where(eq(items.bucketId, b.id)).orderBy(desc(items.createdAt)).limit(10);
-            const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(items).where(eq(items.bucketId, b.id));
-            return { name: b.name, count, recentTitles: recent.map((r) => r.title) };
-          }),
-        );
-        const [{ unsortedCount }] = await db.select({ unsortedCount: sql<number>`count(*)::int` }).from(items).where(eq(items.status, "unsorted"));
-        const suggestions = await db
-          .select({ name: bucketSuggestions.name, status: bucketSuggestions.status })
-          .from(bucketSuggestions)
-          .where(or(eq(bucketSuggestions.status, "open"), eq(bucketSuggestions.status, "dismissed")));
+        // Four round trips in parallel: counts, the 10 newest titles per bucket in one window query, suggestions.
+        const ranked = db
+          .select({ bucketId: items.bucketId, title: items.title, rn: sql<number>`row_number() over (partition by ${items.bucketId} order by ${items.createdAt} desc)`.as("rn") })
+          .from(items)
+          .where(sql`${items.bucketId} is not null`)
+          .as("ranked");
+        const [counts, recent, open, dismissed] = await Promise.all([
+          bucketCounts(),
+          db.select({ bucketId: ranked.bucketId, title: ranked.title }).from(ranked).where(sql`${ranked.rn} <= 10`).orderBy(ranked.rn),
+          listOpenSuggestions(),
+          db.select({ name: bucketSuggestions.name }).from(bucketSuggestions).where(eq(bucketSuggestions.status, "dismissed")),
+        ]);
         return text({
-          buckets: rows,
-          unsortedCount,
-          suggestions: {
-            open: suggestions.filter((s) => s.status === "open").map((s) => s.name),
-            dismissed: suggestions.filter((s) => s.status === "dismissed").map((s) => s.name),
-          },
+          buckets: counts.buckets.map((b) => ({ name: b.name, count: b.count, recentTitles: recent.filter((r) => r.bucketId === b.id).map((r) => r.title) })),
+          unsortedCount: counts.unsortedCount,
+          suggestions: { open: open.map((s) => s.name), dismissed: dismissed.map((s) => s.name) },
         });
       },
     );
@@ -138,30 +130,22 @@ const handler = createMcpHandler(
       "pocket_file_item",
       {
         title: "File a link into a bucket",
-        description: "Move link `number` into `bucket` (an existing bucket name, or \"unsorted\" when nothing fits). Refused when the owner filed the link by hand (sortedBy = owner). Never creates buckets.",
+        description: "Move link `number` into `bucket` (an existing bucket name, or \"unsorted\" when nothing fits). Refused when the owner filed the link by hand (sortedBy = owner) or the link is already in a bucket. Never creates buckets.",
         inputSchema: z.object({ number: z.number().int().positive(), bucket: z.string().min(1) }),
       },
       async ({ number, bucket }) => {
-        const [cur] = await db.select({ id: items.id, sortedBy: items.sortedBy, status: items.status }).from(items).where(eq(items.number, number)).limit(1);
+        const unsorted = bucket.trim().toLowerCase() === "unsorted";
+        const [cur, target] = await Promise.all([
+          db.select({ id: items.id, sortedBy: items.sortedBy, status: items.status }).from(items).where(eq(items.number, number)).limit(1).then((r) => r[0]),
+          unsorted ? null : bucketByName(bucket),
+        ]);
         if (!cur) return fail("not_found", { number });
         if (cur.sortedBy === "owner") return fail("owner_filed", { number, hint: "The owner moved this link by hand; leave it." });
-        let bucketId: string | null = null;
-        if (bucket.trim().toLowerCase() !== "unsorted") {
-          const b = await bucketByName(bucket);
-          if (!b) return fail("no_such_bucket", { bucket, hint: "Use an existing bucket name exactly, or \"unsorted\"." });
-          bucketId = b.id;
-        }
-        // The guards are in the WHERE: a move the owner makes between the check and the write wins, and a link
-        // already in a bucket is never re-filed (the agent only ever files Sorting… and Unsorted links).
         if (cur.status === "sorted") return fail("already_filed", { number, hint: "This link is already in a bucket; leave it." });
-        const written = await db
-          .update(items)
-          .set({ bucketId, status: bucketId ? "sorted" : "unsorted", sortedBy: "agent", sortedAt: new Date() })
-          .where(sql`${items.id} = ${cur.id} and ${items.sortedBy} is distinct from 'owner' and ${items.status} in ('sorting', 'unsorted')`)
-          .returning({ id: items.id });
-        if (!written.length) return fail("owner_filed", { number, hint: "The owner moved this link by hand; leave it." });
-        const row = await findItem(String(number));
-        return text({ number, bucket: row?.bucketName ?? "Unsorted", status: row?.item.status });
+        if (!unsorted && !target) return fail("no_such_bucket", { bucket, hint: "Use an existing bucket name exactly, or \"unsorted\"." });
+        // The same guards sit in the UPDATE's WHERE: a move the owner makes between the check and the write wins.
+        if (!(await fileItem(cur.id, target?.id ?? null, "agent"))) return fail("owner_filed", { number, hint: "The owner moved this link by hand; leave it." });
+        return text({ number, bucket: target?.name ?? "Unsorted", status: target ? "sorted" : "unsorted" });
       },
     );
 
@@ -196,12 +180,7 @@ const handler = createMcpHandler(
 );
 
 // Bearer check before the handler: the token is the only credential (Claude Code config + the agent's vault).
-const sha = (s: string) => createHash("sha256").update(s).digest();
-function authorized(req: Request): boolean {
-  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const expected = process.env.MCP_TOKEN;
-  return !!expected && !!token && timingSafeEqual(sha(token), sha(expected));
-}
-const guarded = (req: Request) => (authorized(req) ? handler(req) : Response.json({ error: "Unauthorized" }, { status: 401 }));
+const guarded = (req: Request) =>
+  secretMatches(req.headers.get("authorization")?.replace(/^Bearer\s+/i, ""), process.env.MCP_TOKEN) ? handler(req) : Response.json({ error: "Unauthorized" }, { status: 401 });
 
 export { guarded as GET, guarded as POST };

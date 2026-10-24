@@ -1,16 +1,8 @@
-// Client-side shapes of what the API returns (dates arrive as ISO strings).
-export type Card = {
-  id: string;
-  number: number;
-  url: string;
-  title: string;
-  domain: string;
-  imageUrl: string | null;
-  status: "sorting" | "sorted" | "unsorted";
-  sortedBy: "agent" | "owner" | null;
-  createdAt: string;
-  bucket: { id: string; name: string } | null;
-};
+import { bucketLabel } from "@/lib/format";
+
+// The API's card shape (type-only import: nothing from lib/items reaches the client bundle).
+export type { Card } from "@/lib/items";
+import type { Card } from "@/lib/items";
 
 export type BucketRow = { id: string; name: string };
 
@@ -23,5 +15,4 @@ export type View = { kind: "all" } | { kind: "unsorted" } | { kind: "bucket"; id
 
 export const sameView = (a: View, b: View) => a.kind === b.kind && (a.kind !== "bucket" || b.kind !== "bucket" || a.id === b.id);
 
-// The label a card shows for where it is.
-export const cardLabel = (c: Card) => (c.status === "sorting" ? "Sorting…" : c.bucket?.name ?? "Unsorted");
+export const cardLabel = (c: Pick<Card, "status" | "bucket">) => bucketLabel(c.status, c.bucket?.name);

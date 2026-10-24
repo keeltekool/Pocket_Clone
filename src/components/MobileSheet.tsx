@@ -1,19 +1,17 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { NewBucket, type NavProps } from "./Sidebar";
+import { useEffect, useRef } from "react";
+import { BucketMenu, NewBucket, type NavProps } from "./Sidebar";
 import { sameView, type BucketRow, type View } from "./types";
-import { Count, IconClose, IconDots, IconPencil, IconTrash, Menu, MenuItem } from "./ui";
+import { Count, IconClose } from "./ui";
 
 // Phone filter (SPEC §4.5): bottom sheet "Filter by bucket" with All links, Unsorted and the buckets; tap selects and
 // closes. Bucket ⋮ and + New bucket live here too, since phones have no sidebar.
 export function MobileSheet({ open, onClose, buckets, counts, view, onView, onCreate, onRename, onDelete, prefill, onPrefillDone }: NavProps & { open: boolean; onClose: () => void }) {
-  const [menuFor, setMenuFor] = useState<string | null>(null);
-  // Runs on open/close only: Main re-renders every poll tick with a fresh onClose, which must not reset the menu.
+  // Runs on open/close only: Main re-renders every poll tick with a fresh onClose.
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
     if (!open) return;
-    setMenuFor(null);
     document.body.style.overflow = "hidden";
     const key = (e: KeyboardEvent) => e.key === "Escape" && close.current();
     document.addEventListener("keydown", key);
@@ -35,28 +33,7 @@ export function MobileSheet({ open, onClose, buckets, counts, view, onView, onCr
           <span className="truncate">{label}</span>
           <Count>{count}</Count>
         </button>
-        {bucket && (
-          <div className="relative mr-2">
-            <button
-              type="button"
-              aria-label={`Options for ${bucket.name}`}
-              onClick={() => setMenuFor(menuFor === bucket.id ? null : bucket.id)}
-              className="bucket-menu-btn flex cursor-pointer items-center justify-center rounded-sm p-2 text-ink-muted hover:bg-cream-dark hover:text-ink"
-            >
-              <IconDots />
-            </button>
-            {menuFor === bucket.id && (
-              <Menu className="absolute top-full right-0 min-w-menu">
-                <MenuItem icon={<IconPencil />} onClick={() => { setMenuFor(null); onRename(bucket); }}>
-                  Rename
-                </MenuItem>
-                <MenuItem icon={<IconTrash size={14} />} danger onClick={() => { setMenuFor(null); onDelete(bucket); }}>
-                  Delete
-                </MenuItem>
-              </Menu>
-            )}
-          </div>
-        )}
+        {bucket && <BucketMenu bucket={bucket} onRename={onRename} onDelete={onDelete} />}
       </div>
     );
   };

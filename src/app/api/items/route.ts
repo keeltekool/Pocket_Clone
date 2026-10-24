@@ -1,4 +1,4 @@
-import { badRequest } from "@/lib/auth";
+import { badRequest } from "@/lib/http";
 import { listItems, NotALink, saveLink } from "@/lib/items";
 import { retryStuck } from "@/lib/sorter";
 

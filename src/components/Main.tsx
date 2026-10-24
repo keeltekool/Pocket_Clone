@@ -1,23 +1,26 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ItemCard } from "./ItemCard";
 import { MobileSheet } from "./MobileSheet";
 import { Sidebar, viewName } from "./Sidebar";
 import { SuggestionStrip } from "./SuggestionStrip";
 import { cardLabel, type BucketRow, type Card, type Prefill, type Suggestion, type View } from "./types";
-import { Button, EmptyState, GhostButton, IconChevron, IconClose, IconSearch, Spinner, TextField } from "./ui";
+import { Button, EmptyState, GhostButton, IconChevron, IconClose, IconSearch, TextField } from "./ui";
 
-export type InitialData = { items: Card[]; buckets: BucketRow[]; suggestions: Suggestion[] };
+export type InitialData = { items: Card[]; buckets: BucketRow[]; suggestions: Suggestion[]; now: string };
 const POLL_MS = 4_000;
 const RESORT_POLL_MS = 5 * 60_000; // after a bucket is created the agent moves links for a while
 const SETTLE_POLL_MS = 60_000; // after the last card is filed the agent may still add a suggestion
 
-export function Main({ initial, initialView, onExpired }: { initial: InitialData | null; initialView: View; onExpired: () => void }) {
-  const [items, setItems] = useState<Card[] | null>(initial?.items ?? null);
-  const [buckets, setBuckets] = useState<BucketRow[]>(initial?.buckets ?? []);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>(initial?.suggestions ?? []);
+// Thrown by `api` on a 401: the session ended and the login form is already showing.
+class Expired extends Error {}
+const expired = (e: unknown) => e instanceof Expired;
+
+export function Main({ initial, initialView, onExpired }: { initial: InitialData; initialView: View; onExpired: () => void }) {
+  const [items, setItems] = useState<Card[]>(initial.items);
+  const [buckets, setBuckets] = useState<BucketRow[]>(initial.buckets);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>(initial.suggestions);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
-  const [pollUntil, setPollUntil] = useState(0);
   const [view, setView] = useState<View>(initialView);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Card[] | null>(null);
@@ -28,6 +31,10 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
   const [highlight, setHighlight] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Live-update poll (SPEC §4.2): runs while a card is Sorting… and until `pollUntil`; `since` is the server clock.
+  const pollUntil = useRef(0);
+  const since = useRef(initial.now);
+  const [pollKey, setPollKey] = useState(0);
 
   // Same-origin fetch; a 401 means the session ended → back to the login screen.
   const api = useCallback(
@@ -35,7 +42,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       const r = await fetch(path, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
       if (r.status === 401) {
         onExpired();
-        throw new Error("Session expired");
+        throw new Expired();
       }
       return r;
     },
@@ -47,18 +54,6 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2_500);
   }, []);
-
-  // After a fresh login there is no server-rendered data yet.
-  useEffect(() => {
-    if (items) return;
-    Promise.all([api("/api/items"), api("/api/buckets"), api("/api/suggestions")].map((p) => p.then((r) => r.json())))
-      .then(([i, b, s]) => {
-        setItems(i.items);
-        setBuckets(b.buckets);
-        setSuggestions(s.suggestions);
-      })
-      .catch(() => {});
-  }, [items, api]);
 
   // The view lives in the URL too (SPEC §4.2 routes), without a navigation.
   useEffect(() => {
@@ -86,39 +81,44 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     };
   }, [q, api]);
 
-  // While any card is Sorting…, for a minute after the last one is filed (the agent may still add a suggestion), and
-  // for 5 min after a bucket was created: pull changed items and open suggestions every 4 s (SPEC §4.2 live updates).
-  const sorting = !!items?.some((i) => i.status === "sorting");
-  const polling = sorting || Date.now() < pollUntil;
+  // Keep polling for `ms` more; the tick stops itself once nothing is sorting and the deadline has passed.
+  const pollFor = (ms: number) => {
+    pollUntil.current = Math.max(pollUntil.current, Date.now() + ms);
+    setPollKey((k) => k + 1);
+  };
+  const sorting = items.some((i) => i.status === "sorting");
   useEffect(() => {
-    if (!polling) return;
-    // `since` is the server's clock from the previous answer (taken before its query), never this device's.
-    let since: string | null = null;
+    if (!sorting && Date.now() >= pollUntil.current) return;
     const t = setInterval(async () => {
       try {
-        const query = since ? `changedSince=${encodeURIComponent(since)}` : `changedSince=${encodeURIComponent(new Date(Date.now() - 60_000).toISOString())}`;
-        const [r, s] = await Promise.all([api(`/api/items?${query}`), api("/api/suggestions")]);
+        const [r, s] = await Promise.all([api(`/api/items?changedSince=${encodeURIComponent(since.current)}`), api("/api/suggestions")]);
         const { items: changed, now } = (await r.json()) as { items: Card[]; now: string };
-        since = now;
+        since.current = now;
         if (changed.length) {
-          setItems((prev) => merge(prev ?? [], changed));
+          setItems((prev) => merge(prev, changed));
           setResults((prev) => (prev ? merge(prev, changed.filter((c) => prev.some((p) => p.id === c.id))) : prev));
+          if (changed.some((c) => c.status !== "sorting")) pollUntil.current = Math.max(pollUntil.current, Date.now() + SETTLE_POLL_MS);
         }
-        if (changed.some((c) => c.status !== "sorting")) setPollUntil((p) => Math.max(p, Date.now() + SETTLE_POLL_MS));
-        setSuggestions((await s.json()).suggestions); // a new array each tick re-renders, which re-evaluates `polling`
+        const next = (await s.json()).suggestions as Suggestion[];
+        setSuggestions((prev) => (prev.map((x) => x.id).join() === next.map((x) => x.id).join() ? prev : next));
+        if (!changed.some((c) => c.status === "sorting") && Date.now() >= pollUntil.current) setPollKey((k) => k + 1); // re-evaluate
       } catch {}
     }, POLL_MS);
     return () => clearInterval(t);
-  }, [polling, api]);
+  }, [sorting, pollKey, api]);
 
   const inView = (c: Card) =>
-    view.kind === "all" ? true : view.kind === "unsorted" ? c.status === "unsorted" : c.bucket?.id === view.id;
-  const visible = (results ?? items ?? []).filter(inView);
-  const counts = {
-    all: items?.length ?? 0,
-    unsorted: items?.filter((i) => i.status === "unsorted").length ?? 0,
-    bucket: (id: string) => items?.filter((i) => i.bucket?.id === id).length ?? 0,
-  };
+    view.kind === "all" || (view.kind === "unsorted" ? c.status === "unsorted" : c.bucket?.id === view.id);
+  const visible = (results ?? items).filter(inView);
+  const counts = useMemo(() => {
+    const perBucket = new Map<string, number>();
+    let unsorted = 0;
+    for (const i of items) {
+      if (i.status === "unsorted") unsorted++;
+      if (i.bucket) perBucket.set(i.bucket.id, (perBucket.get(i.bucket.id) ?? 0) + 1);
+    }
+    return { all: items.length, unsorted, bucket: (id: string) => perBucket.get(id) ?? 0 };
+  }, [items]);
 
   function focusCard(id: string) {
     setHighlight(id);
@@ -126,47 +126,40 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     setTimeout(() => setHighlight(null), 2_000);
   }
 
+  // Every card edit applies to the full list and to the current search results alike.
+  const patchCards = (fn: (c: Card) => Card | null) => {
+    const apply = (list: Card[]) => list.flatMap((c) => { const n = fn(c); return n ? [n] : []; });
+    setItems(apply);
+    setResults((prev) => (prev ? apply(prev) : prev));
+  };
+  // Runs an action; a lost session is handled by `api` (login screen), anything else becomes a toast.
+  const attempt = (fn: () => Promise<void>, failure: string) => fn().catch((err) => { if (!expired(err)) show(failure); });
+
   async function save(e: FormEvent) {
     e.preventDefault();
     const input = url.trim();
     if (!input || saving) return;
     setSaving(true);
     setAddError(null);
-    try {
+    await attempt(async () => {
       const r = await api("/api/items", { method: "POST", body: JSON.stringify({ url: input }) });
       const body = await r.json().catch(() => ({}));
-      if (r.status === 400) {
-        setAddError(body.error || "That doesn't look like a link.");
-        return;
-      }
+      if (r.status === 400) return setAddError(body.error || "That doesn't look like a link.");
       if (!r.ok) throw new Error(body.error);
       const item: Card = body.item;
       setUrl("");
       if (body.duplicate) {
         show(`Already saved as #${item.number} · ${cardLabel(item)}`);
-        setItems((prev) => merge(prev ?? [], [item]));
+        setItems((prev) => merge(prev, [item]));
         if (!inView(item)) setView({ kind: "all" });
         if (results && !results.some((c) => c.id === item.id)) setQ(""); // the card must be on screen to scroll to
         focusCard(item.id);
       } else {
-        setItems((prev) => [item, ...(prev ?? []).filter((i) => i.id !== item.id)]);
+        setItems((prev) => [item, ...prev.filter((i) => i.id !== item.id)]);
       }
-    } catch (err) {
-      if ((err as Error).message !== "Session expired") show("Couldn't save. Try again.");
-    } finally {
-      setSaving(false);
-    }
+    }, "Couldn't save. Try again.");
+    setSaving(false);
   }
-
-  // Every card edit applies to the full list and to the current search results alike.
-  const patchCards = (fn: (c: Card) => Card | null) => {
-    const apply = (list: Card[]) => list.flatMap((c) => { const n = fn(c); return n ? [n] : []; });
-    setItems((prev) => (prev ? apply(prev) : prev));
-    setResults((prev) => (prev ? apply(prev) : prev));
-  };
-  // Runs an action; a lost session is handled by `api` (login screen), anything else becomes a toast.
-  const attempt = (fn: () => Promise<void>, failure: string) =>
-    fn().catch((err) => { if ((err as Error).message !== "Session expired") show(failure); });
 
   const move = (item: Card, bucketId: string | null) =>
     attempt(async () => {
@@ -193,10 +186,10 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
       if (!r.ok) return body.error || "Couldn't create the bucket.";
       setBuckets((prev) => [...prev, { id: body.bucket.id, name: body.bucket.name }]);
       if (suggestionId) setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId));
-      setPollUntil(Date.now() + RESORT_POLL_MS);
+      pollFor(RESORT_POLL_MS);
       return null;
     } catch (err) {
-      return (err as Error).message === "Session expired" ? null : "Couldn't create the bucket.";
+      return expired(err) ? null : "Couldn't create the bucket.";
     }
   }
 
@@ -214,7 +207,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     if (phone) setSheetOpen(true);
   }
   // Links of a suggestion that are still Unsorted (the stored list is a snapshot).
-  const unsortedOf = (s: Suggestion) => s.itemNumbers.filter((n) => items?.some((i) => i.number === n && i.status === "unsorted")).length;
+  const unsortedOf = (s: Suggestion) => s.itemNumbers.filter((n) => items.some((i) => i.number === n && i.status === "unsorted")).length;
 
   const renameBucket = (b: BucketRow) =>
     attempt(async () => {
@@ -335,11 +328,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
             <SuggestionStrip suggestion={suggestion} count={unsortedOf(suggestion)} onCreate={() => startFromSuggestion(suggestion)} onDismiss={() => dismissSuggestion(suggestion)} />
           )}
 
-          {!items ? (
-            <div className="flex items-center justify-center gap-2.5 p-6 text-label text-ink-muted">
-              <Spinner /> Loading…
-            </div>
-          ) : visible.length === 0 ? (
+          {visible.length === 0 ? (
             <Empty view={view} buckets={buckets} q={q.trim()} total={items.length} />
           ) : (
             <div id="links-grid" className="flex flex-col gap-2">

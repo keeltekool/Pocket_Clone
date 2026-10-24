@@ -8,13 +8,16 @@ const DAY_MS = 86_400_000;
 
 // Keyed by the password itself, so changing APP_PASSWORD signs every device out.
 const sign = (exp: string) => createHmac("sha256", process.env.APP_PASSWORD!).update(exp).digest("base64url");
-const same = (a: string, b: string) =>
-  timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
+
+// Constant-time compare of two secrets of any length (both hashed first). False when either is missing.
+export function secretMatches(given: string | null | undefined, expected: string | null | undefined): boolean {
+  if (!given || !expected) return false;
+  return timingSafeEqual(createHash("sha256").update(given).digest(), createHash("sha256").update(expected).digest());
+}
 
 // NFC: "ü" typed as one code point or as u + combining mark must match the same password.
 export function checkPassword(password: unknown): boolean {
-  const expected = process.env.APP_PASSWORD;
-  return typeof password === "string" && !!expected && same(password.normalize("NFC"), expected.normalize("NFC"));
+  return typeof password === "string" && secretMatches(password.normalize("NFC"), process.env.APP_PASSWORD?.normalize("NFC"));
 }
 
 // remember → persistent cookie for REMEMBER_DAYS; otherwise a browser-session cookie the server caps at one day.
@@ -26,8 +29,7 @@ export function sessionCookie(remember: boolean): string {
 
 export const clearCookie = `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 
-// True when the Cookie header carries a valid, unexpired session. Works for Request, NextRequest and the
-// `cookies()` header string alike: pass the raw header.
+// True when a Cookie header (or `cookies().toString()`) carries a valid, unexpired session.
 export function hasSession(cookieHeader: string | null | undefined): boolean {
   const raw = String(cookieHeader || "")
     .split(/;\s*/)
@@ -35,10 +37,7 @@ export function hasSession(cookieHeader: string | null | undefined): boolean {
     ?.slice(COOKIE.length + 1);
   const [exp, sig] = (raw || "").split(".");
   if (!exp || !sig || !process.env.APP_PASSWORD || Number(exp) < Date.now()) return false;
-  return same(sig, sign(exp));
+  return secretMatches(sig, sign(exp));
 }
 
 export const getSession = (req: Request) => hasSession(req.headers.get("cookie"));
-
-export const unauthorized = () => Response.json({ error: "Unauthorized" }, { status: 401 });
-export const badRequest = (message: string) => Response.json({ error: message }, { status: 400 });
