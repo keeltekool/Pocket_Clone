@@ -10,9 +10,11 @@ const sha = (s: string) => createHash("sha256").update(s).digest();
 export async function POST(req: Request) {
   const key = req.headers.get("x-api-key") ?? "";
   const expected = process.env.SHORTCUT_API_KEY;
-  if (!expected || !key || !timingSafeEqual(sha(key), sha(expected))) return Response.json({ error: "Invalid API key" }, { status: 401 });
-  const body = await req.json().catch(() => ({}));
-  const input = typeof body.url === "string" ? body.url : typeof body === "string" ? body : "";
+  if (!expected || !key || !timingSafeEqual(sha(key), sha(expected))) {
+    return Response.json({ error: "Invalid API key", message: "Invalid API key" }, { status: 401 });
+  }
+  const body: unknown = await req.json().catch(() => null);
+  const input = typeof body === "string" ? body : typeof (body as { url?: unknown })?.url === "string" ? (body as { url: string }).url : "";
   try {
     const { item, duplicate } = await saveLink(input);
     const message = duplicate ? `Already saved #${item.number} · ${cardLabel({ ...item, createdAt: String(item.createdAt) })}` : `Saved #${item.number}`;

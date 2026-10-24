@@ -12,7 +12,8 @@ export function SetupClient({ site, secrets: initial }: { site: string; secrets:
   if (!secrets) return <Login onAuthed={() => location.reload()} />;
 
   const saveUrl = `${site}/api/save`;
-  const bookmarklet = `javascript:window.open('${site}/add?url='+encodeURIComponent(location.href),'pocket','width=420,height=260,popup')`;
+  // void(): a javascript: URL that returns a value would replace the page in some browsers.
+  const bookmarklet = `javascript:void(window.open('${site}/add?url='+encodeURIComponent(location.href),'pocket','width=420,height=260,popup'))`;
   const mcpCommand = `claude mcp add --scope user --transport http pocket ${site}/api/mcp --header "Authorization: Bearer ${secrets.mcpToken}"`;
   const mcpShown = `claude mcp add --scope user --transport http pocket ${site}/api/mcp --header "Authorization: Bearer ••••••••"`;
 
@@ -98,7 +99,7 @@ export function SetupClient({ site, secrets: initial }: { site: string; secrets:
 
           <p className="text-micro text-ink-faint">
             Signed in on this device.{" "}
-            <button type="button" className="cursor-pointer underline-offset-2 hover:text-ink hover:underline" onClick={() => fetch("/api/auth", { method: "DELETE" }).then(() => setSecrets(null))}>
+            <button type="button" className="cursor-pointer underline-offset-2 hover:text-ink hover:underline" onClick={() => fetch("/api/auth", { method: "DELETE" }).catch(() => {}).then(() => setSecrets(null))}>
               Log out
             </button>
           </p>
@@ -157,7 +158,7 @@ function Bookmarklet({ code }: { code: string }) {
       draggable
       onClick={(e) => e.preventDefault()}
       title="Drag me to your bookmarks bar"
-      className="inline-flex cursor-grab items-center gap-2 rounded-md bg-terracotta px-5 py-3 text-body font-semibold text-warm-white shadow-sm transition-all duration-200 hover:bg-terracotta-soft active:cursor-grabbing"
+      className="inline-flex cursor-grab items-center gap-2 rounded-md bg-terracotta px-5 py-3 text-body font-semibold text-warm-white transition-all duration-200 hover:bg-terracotta-soft active:cursor-grabbing"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { bucketSuggestions, buckets } from "@/db/schema";
 import { badRequest } from "@/lib/auth";
@@ -26,7 +26,10 @@ export async function POST(req: Request) {
     throw e;
   }
   if (isUuid(body.suggestionId)) {
-    await db.update(bucketSuggestions).set({ status: "created" }).where(eq(bucketSuggestions.id, body.suggestionId));
+    await db
+      .update(bucketSuggestions)
+      .set({ status: "created" })
+      .where(and(eq(bucketSuggestions.id, body.suggestionId), eq(bucketSuggestions.status, "open")));
   }
   await dispatchBucketCreated(bucket.name);
   return Response.json({ bucket: { ...bucket, count: 0 } }, { status: 201 });

@@ -84,7 +84,8 @@ export async function saveLink(input: string): Promise<{ item: Card; duplicate: 
     .returning({ id: items.id, number: items.number });
   // Two saves of the same link at once: the unique url_key makes the second a duplicate (SPEC §6.10).
   if (!inserted) return { item: (await getCard(eq(items.urlKey, urlKey)))!, duplicate: true };
-  await dispatchSort(inserted.number);
+  // The link is saved whatever happens to the dispatch; a failed one is a stuck item, not a failed save.
+  await dispatchSort(inserted.number).catch((e) => console.error(`dispatch #${inserted.number}:`, e));
   return { item: (await getCard(eq(items.id, inserted.id)))!, duplicate: false };
 }
 

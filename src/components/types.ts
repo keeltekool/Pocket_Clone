@@ -14,7 +14,10 @@ export type Card = {
 
 export type BucketRow = { id: string; name: string };
 
-export type Suggestion = { id: string; name: string; reason: string; itemNumbers: number[]; createdAt: string };
+export type Suggestion = { id: string; name: string; itemNumbers: number[]; createdAt: string };
+
+// What a suggestion's Create bucket hands to the new-bucket field. `nonce` re-opens the field on a repeat click.
+export type Prefill = { name: string; suggestionId: string; target: "sidebar" | "sheet"; nonce: number };
 
 export type View = { kind: "all" } | { kind: "unsorted" } | { kind: "bucket"; id: string };
 

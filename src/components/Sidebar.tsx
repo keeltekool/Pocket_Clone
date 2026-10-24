@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { sameView, type BucketRow, type View } from "./types";
+import { sameView, type BucketRow, type Prefill, type View } from "./types";
 import { Count, IconDots, IconPencil, IconTrash, Menu, MenuItem, useDismiss } from "./ui";
 
 export type NavProps = {
@@ -8,11 +8,13 @@ export type NavProps = {
   counts: { all: number; unsorted: number; bucket: (id: string) => number };
   view: View;
   onView: (v: View) => void;
-  onCreate: (name: string) => Promise<string | null>;
+  onCreate: (name: string, suggestionId: string | null) => Promise<string | null>;
   onRename: (b: BucketRow) => void;
   onDelete: (b: BucketRow) => void;
-  /** Name pre-filled into the new-bucket field (from a suggestion's Create bucket). */
-  prefill?: string | null;
+  /** From a suggestion's Create bucket: pre-fills the new-bucket field of the named target. */
+  prefill: Prefill | null;
+  /** The field closed (created or cancelled): the prefill is spent. */
+  onPrefillDone: () => void;
 };
 
 export const viewName = (view: View, buckets: BucketRow[]) =>
@@ -29,7 +31,7 @@ export function Sidebar(p: NavProps) {
       {p.buckets.map((b) => (
         <BucketRowItem key={b.id} bucket={b} {...p} />
       ))}
-      <NewBucket onCreate={p.onCreate} prefill={p.prefill} />
+      <NewBucket idPrefix="new-bucket" onCreate={p.onCreate} prefill={p.prefill?.target === "sidebar" ? p.prefill : null} onDone={p.onPrefillDone} />
     </nav>
   );
 }
@@ -85,42 +87,51 @@ function BucketRowItem({ bucket, counts, view, onView, onRename, onDelete }: Nav
 }
 
 // Dashed "+ New bucket" row → inline name field; Enter creates, Escape cancels. Shared by the sidebar and the sheet.
-export function NewBucket({ onCreate, prefill }: { onCreate: (name: string) => Promise<string | null>; prefill?: string | null }) {
-  const [editing, setEditing] = useState(!!prefill);
-  const [name, setName] = useState(prefill ?? "");
+export function NewBucket({ idPrefix, onCreate, prefill, onDone }: {
+  idPrefix: string;
+  onCreate: (name: string, suggestionId: string | null) => Promise<string | null>;
+  prefill: Prefill | null;
+  onDone: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const nonce = prefill?.nonce;
 
   // A suggestion's Create bucket opens the field with the name in it; the owner can edit, Enter creates.
+  // Keyed on the nonce so a second click after a cancel opens it again.
   useEffect(() => {
-    if (prefill) {
-      setName(prefill);
+    if (prefill && nonce) {
+      setName(prefill.name);
       setEditing(true);
       setError(null);
     }
-  }, [prefill]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce]);
 
-  function cancel() {
+  function close() {
     setEditing(false);
     setName("");
     setError(null);
+    if (prefill) onDone();
   }
   async function submit(e: FormEvent) {
     e.preventDefault();
     const n = name.trim();
     if (!n || busy) return;
     setBusy(true);
-    const err = await onCreate(n);
+    const err = await onCreate(n, prefill?.suggestionId ?? null);
     setBusy(false);
     if (err) return setError(err);
-    cancel();
+    close();
   }
 
   if (!editing)
     return (
       <div className="mt-2 px-4">
         <button
-          id="new-bucket-btn"
+          id={`${idPrefix}-btn`}
           type="button"
           onClick={() => setEditing(true)}
           className="w-full cursor-pointer rounded-sm border-[1.5px] border-dashed border-cream-dark bg-transparent px-4 py-2 text-left text-small text-ink-muted transition-all duration-150 ease-out hover:border-terracotta-soft hover:bg-terracotta-glow hover:text-terracotta"
@@ -130,16 +141,16 @@ export function NewBucket({ onCreate, prefill }: { onCreate: (name: string) => P
       </div>
     );
   return (
-    <form id="new-bucket-form" onSubmit={submit} className="mt-2 px-4">
+    <form id={`${idPrefix}-form`} onSubmit={submit} className="mt-2 px-4">
       <input
-        id="new-bucket-input"
+        id={`${idPrefix}-input`}
         autoFocus
         maxLength={60}
         placeholder="Bucket name…"
         value={name}
         onChange={(e) => { setName(e.target.value); setError(null); }}
-        onKeyDown={(e) => e.key === "Escape" && cancel()}
-        onBlur={() => !name.trim() && cancel()}
+        onKeyDown={(e) => e.key === "Escape" && close()}
+        onBlur={() => !name.trim() && close()}
         className="w-full rounded-sm border-[1.5px] border-terracotta-soft bg-warm-white px-3 py-2 text-small text-ink outline-none ring-4 ring-terracotta-glow placeholder:text-ink-faint"
       />
       {error && <p className="mt-1 px-1 text-micro text-danger">{error}</p>}

@@ -4,18 +4,19 @@ import { ItemCard } from "./ItemCard";
 import { MobileSheet } from "./MobileSheet";
 import { Sidebar, viewName } from "./Sidebar";
 import { SuggestionStrip } from "./SuggestionStrip";
-import { cardLabel, type BucketRow, type Card, type Suggestion, type View } from "./types";
+import { cardLabel, type BucketRow, type Card, type Prefill, type Suggestion, type View } from "./types";
 import { Button, EmptyState, GhostButton, IconChevron, IconClose, IconSearch, Spinner, TextField } from "./ui";
 
 export type InitialData = { items: Card[]; buckets: BucketRow[]; suggestions: Suggestion[] };
 const POLL_MS = 4_000;
 const RESORT_POLL_MS = 5 * 60_000; // after a bucket is created the agent moves links for a while
+const SETTLE_POLL_MS = 60_000; // after the last card is filed the agent may still add a suggestion
 
 export function Main({ initial, initialView, onExpired }: { initial: InitialData | null; initialView: View; onExpired: () => void }) {
   const [items, setItems] = useState<Card[] | null>(initial?.items ?? null);
   const [buckets, setBuckets] = useState<BucketRow[]>(initial?.buckets ?? []);
   const [suggestions, setSuggestions] = useState<Suggestion[]>(initial?.suggestions ?? []);
-  const [prefill, setPrefill] = useState<{ name: string; suggestionId: string | null } | null>(null);
+  const [prefill, setPrefill] = useState<Prefill | null>(null);
   const [pollUntil, setPollUntil] = useState(0);
   const [view, setView] = useState<View>(initialView);
   const [q, setQ] = useState("");
@@ -85,8 +86,8 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     };
   }, [q, api]);
 
-  // While any card is Sorting… (or for 5 min after a bucket was created), pull changed items and open suggestions
-  // every 4 s (SPEC §4.2 live updates).
+  // While any card is Sorting…, for a minute after the last one is filed (the agent may still add a suggestion), and
+  // for 5 min after a bucket was created: pull changed items and open suggestions every 4 s (SPEC §4.2 live updates).
   const sorting = !!items?.some((i) => i.status === "sorting");
   const polling = sorting || Date.now() < pollUntil;
   useEffect(() => {
@@ -98,12 +99,12 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
         const { items: changed } = (await r.json()) as { items: Card[] };
         since = new Date(Date.now() - 1_000).toISOString();
         if (changed.length) setItems((prev) => merge(prev ?? [], changed));
-        setSuggestions((await s.json()).suggestions);
-        if (Date.now() >= pollUntil && !changed.some((c) => c.status === "sorting")) setPollUntil((p) => p); // re-evaluates `polling`
+        if (changed.some((c) => c.status !== "sorting")) setPollUntil((p) => Math.max(p, Date.now() + SETTLE_POLL_MS));
+        setSuggestions((await s.json()).suggestions); // a new array each tick re-renders, which re-evaluates `polling`
       } catch {}
     }, POLL_MS);
     return () => clearInterval(t);
-  }, [polling, pollUntil, api]);
+  }, [polling, api]);
 
   const inView = (c: Card) =>
     view.kind === "all" ? true : view.kind === "unsorted" ? c.status === "unsorted" : c.bucket?.id === view.id;
@@ -179,15 +180,13 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
 
   // + New bucket, or a suggestion's Create bucket (then the suggestion is marked created). The agent moves matching
   // Unsorted links afterwards, so the page keeps polling for a while.
-  async function createBucket(name: string): Promise<string | null> {
-    const suggestionId = prefill?.suggestionId ?? null;
+  async function createBucket(name: string, suggestionId: string | null): Promise<string | null> {
     try {
       const r = await api("/api/buckets", { method: "POST", body: JSON.stringify({ name, suggestionId }) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) return body.error || "Couldn't create the bucket.";
       setBuckets((prev) => [...prev, { id: body.bucket.id, name: body.bucket.name }]);
       if (suggestionId) setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId));
-      setPrefill(null);
       setPollUntil(Date.now() + RESORT_POLL_MS);
       return null;
     } catch (err) {
@@ -204,9 +203,12 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
 
   // Create bucket from the strip: the new-bucket field opens pre-filled (sidebar, or the sheet on phones).
   function startFromSuggestion(s: Suggestion) {
-    setPrefill({ name: s.name, suggestionId: s.id });
-    if (window.matchMedia("(max-width: 767px)").matches) setSheetOpen(true);
+    const phone = window.matchMedia("(max-width: 767px)").matches;
+    setPrefill({ name: s.name, suggestionId: s.id, target: phone ? "sheet" : "sidebar", nonce: Date.now() });
+    if (phone) setSheetOpen(true);
   }
+  // Links of a suggestion that are still Unsorted (the stored list is a snapshot).
+  const unsortedOf = (s: Suggestion) => s.itemNumbers.filter((n) => items?.some((i) => i.number === n && i.status === "unsorted")).length;
 
   const renameBucket = (b: BucketRow) =>
     attempt(async () => {
@@ -237,7 +239,10 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
     show(`Copied pocket #${item.number}`);
   }
 
-  const nav = { buckets, counts, view, onView: setView, onCreate: createBucket, onRename: renameBucket, onDelete: deleteBucket, prefill: prefill?.name ?? null };
+  const nav = {
+    buckets, counts, view, onView: setView, onCreate: createBucket, onRename: renameBucket, onDelete: deleteBucket,
+    prefill, onPrefillDone: () => setPrefill(null),
+  };
   const suggestion = suggestions[0] ?? null;
 
   return (
@@ -321,7 +326,7 @@ export function Main({ initial, initialView, onExpired }: { initial: InitialData
           </div>
 
           {suggestion && !q.trim() && (
-            <SuggestionStrip suggestion={suggestion} onCreate={() => startFromSuggestion(suggestion)} onDismiss={() => dismissSuggestion(suggestion)} />
+            <SuggestionStrip suggestion={suggestion} count={unsortedOf(suggestion)} onCreate={() => startFromSuggestion(suggestion)} onDismiss={() => dismissSuggestion(suggestion)} />
           )}
 
           {!items ? (

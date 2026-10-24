@@ -131,7 +131,7 @@ Claude Code returns the article.
   - Read before coding: `claude-api` skill → `typescript/managed-agents/README.md` and `shared/managed-agents-core.md`
     (§ Session budgets) for SDK 1.3 names.
   - Proof: `npx tsx --env-file=.env.local scripts/agent-sync.ts` prints the three IDs; re-run reports "ok" (idempotent).
-- [x] **Task 2.3 — Dispatch + polling + stuck retry**
+- [ ] **Task 2.3 — Dispatch + polling + stuck retry**
   - Files: `src/lib/sorter.ts`: `dispatchSort(number: number): Promise<void>` and `dispatchBucketCreated(name: string)`
     (sessions.create with agent, environment, vault, $1 budget; one `user.message`; store `sortSessionId`; increment
     `sortAttempts`; never awaits the event stream). `saveLink` sets `status: "sorting"` and calls `dispatchSort`.
@@ -139,7 +139,7 @@ Claude Code returns the article.
   - UI: card label `Sorting…`; page polls `changedSince` every 4 s while any visible card is sorting.
   - Proof: save 3 real links (marker): Dokobit digitempel article → `eSign & eID`; a cv.ee job ad → `Jobs`; a recipe page
     → `Unsorted`. Each within 5 min. Record each session's `list_cost` here (feeds the spec's cost estimate).
-- [x] **Task 2.4 — Claude Code registration**
+- [ ] **Task 2.4 — Claude Code registration**
   - `claude mcp add --scope user --transport http pocket https://pocket-clone-virid.vercel.app/api/mcp --header
     "Authorization: Bearer <MCP_TOKEN>"` (command built from `.env.local`, token not echoed). If the harness blocks the
     settings change, log it under Blocked with the exact command for the owner.
@@ -158,7 +158,7 @@ Owner sees: when Unsorted gathers a topic, a suggestion strip appears; creating 
   - Design: new UI element → `impeccable` craft floor inside the existing tokens (no new visual language).
   - `POST /api/buckets { name, suggestionId? }` marks the suggestion `created` and calls `dispatchBucketCreated(name)`;
     `+ New bucket` calls it too.
-- [x] **Task 3.2 — Agent rules for suggestions + re-sort**
+- [ ] **Task 3.2 — Agent rules for suggestions + re-sort**
   - `agent/sorter.md` rules 4–5 (SPEC §7.3); re-run `agent-sync.ts`.
   - Proof: insert 3 marker items about one topic no bucket covers (e.g. three EUDI wallet pages), dispatch → a suggestion
     appears; Create bucket → the 3 items move into it; Dismiss path hides it and the name is not suggested again.
@@ -216,8 +216,35 @@ Learning from moves, alternative-bucket chips, summaries on cards, reading pane,
 options, view layouts, tags, notes, highlights, reminders, nested buckets, Raindrop import, export, backups, in-app AI
 chat, Chrome extension, scheduled agent runs, bulk select.
 
+## Gate reviews 2–4 (code-reviewer, Opus, 24.10)
+
+- Phase 2: 2 Critical fixed (`retryStuck` now runs on the server-rendered main view too; stuck → Unsorted bumps
+  `sortedAt`), Important fixed (atomic claim: one UPDATE … RETURNING per stuck item; the prod flow expects the label the
+  agent chose; Review focus 1 flow added with marker rows; x.com oEmbed in `check-page.mjs`), Minor fixed (owner guard in
+  the `pocket_file_item` UPDATE's WHERE, status not rewritten after dispatch, malformed-URL guard, save never 500s on a
+  failed dispatch, Sorting… chip opens nothing on desktop). Not fixed: polling counts all cards, not only visible ones
+  (superset, harmless); `since` from the client clock (a 10 s back-window on start covers small skews); commit 5cbc70e
+  does not build alone (history not rewritten; the gate ran at HEAD); `db:push` script removed (drizzle-kit push would
+  offer to drop the `v1_*` tables, the explicit migration is the only schema path) — recorded here as the deviation.
+- Phase 3: Critical (3.2 ticked without its prod proof) → unticked, listed under Blocked. Important fixed (polling keeps
+  going 60 s after the last card settles so a suggestion shows live; prefill is an object with a nonce and an `onDone`,
+  cleared on cancel; the sheet's field has its own ids; the prod flow asserts the rule-5 move of 3 topic items; the 375
+  suggestion path is clicked). Minor fixed (only open suggestions flip to `created`; 20 s client timeout on session
+  create; `listOpenSuggestions` in `src/lib`; live Unsorted count; the reason line dropped — not in the spec's copy).
+  Focus ring: the tokens' `:focus-visible` outline covers the strip's buttons.
+- Phase 4: Important fixed (the bookmarklet's `javascript:` href is now run on a marker page; the popup's status and
+  self-close are asserted; 2.3/2.4/3.2 unticked). Minor fixed (`void(...)`, no shadow on the bookmark button, logout
+  catch, 401 `message`, null body, `/setup` reached through the header link, `SITE` constant instead of a localhost
+  check). Noted, not changed: any site can open `/add?url=` for a logged-in owner (SPEC §4.3 "saves immediately" is the
+  design; the cost is one $1-capped session); the compact login drops the tagline to fit 420×260.
+- Rule 4 (the agent suggesting a bucket on its own) is observed on prod, not asserted: the model decides when 3+ links
+  share a topic. Rule 5 is asserted. Review focus 4's re-dispatch of an owner-moved item is covered at the only place
+  the agent can write (`check-mcp.mjs` owner_filed step + the atomic WHERE); no server path re-dispatches a settled item.
+
 ## Blocked
 
+- **Prod-only proofs (Tasks 2.3, 2.4, 3.2):** code done; the real agent sorting 3 links with `list_cost` recorded,
+  `claude mcp list` → `pocket ✓ Connected`, `claude -p "pocket #N"`, and the rule-5 move run right after the first ship.
 - **Vercel deploy cap (24.10, 10:30 UTC):** the account had 109 deployments in the rolling 24 h (Hobby cap 100). The
   window drops to ≤100 at 16:53 UTC and ≤90 at 17:20 UTC. Gate ships wait for that; the build continues locally
   (Phases 2–4 proofs that need prod, i.e. real Managed Agent sessions against `/api/mcp`, run right after the first ship).

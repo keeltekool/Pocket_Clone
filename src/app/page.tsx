@@ -3,7 +3,8 @@ import { Shell } from "@/components/Shell";
 import type { View } from "@/components/types";
 import { hasSession } from "@/lib/auth";
 import { bucketCounts, listItems } from "@/lib/items";
-import { listOpenSuggestions } from "./api/suggestions/route";
+import { retryStuck } from "@/lib/sorter";
+import { listOpenSuggestions } from "@/lib/suggestions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   let view: View = sp.view === "unsorted" ? { kind: "unsorted" } : sp.bucket ? { kind: "bucket", id: sp.bucket } : { kind: "all" };
 
   if (!authed) return <Shell authed={false} initial={null} view={view} />;
+  await retryStuck(); // a main-view load is the stuck-item check (SPEC §6.4)
   const [items, counts, suggestions] = await Promise.all([listItems(), bucketCounts(), listOpenSuggestions()]);
   const wanted = view.kind === "bucket" ? view.id : null;
   if (wanted && !counts.buckets.some((b) => b.id === wanted)) view = { kind: "all" }; // stale ?bucket= link

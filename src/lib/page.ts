@@ -88,6 +88,7 @@ async function fetchTweet(url: string): Promise<PageData> {
   });
   if (!res.ok) return NONE;
   const data = (await res.json()) as { author_name?: string; html?: string };
-  const text = squash(parseHTML(`<div>${data.html || ""}</div>`).document.body?.textContent);
+  // A full document: linkedom gives a fragment no <body>.
+  const text = squash(parseHTML(`<html><body>${data.html || ""}</body></html>`).document.body?.textContent);
   return { title: data.author_name ? `${data.author_name} on X` : null, imageUrl: null, text };
 }

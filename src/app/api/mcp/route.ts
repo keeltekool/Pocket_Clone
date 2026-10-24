@@ -23,7 +23,14 @@ const compact = (c: Card) => ({
 // "58", "#58" → by number; a URL → by its normalised key.
 async function findItem(ref: string) {
   const n = ref.trim().match(/^#?(\d+)$/);
-  const where = n ? eq(items.number, Number(n[1])) : /^https?:\/\//i.test(ref) ? eq(items.urlKey, normalizeUrl(ref.trim())) : null;
+  let where = n ? eq(items.number, Number(n[1])) : null;
+  if (!where && /^https?:\/\//i.test(ref)) {
+    try {
+      where = eq(items.urlKey, normalizeUrl(ref.trim()));
+    } catch {
+      return null; // malformed URL
+    }
+  }
   if (!where) return null;
   const [row] = await db
     .select({ item: items, bucketName: buckets.name })
@@ -144,10 +151,13 @@ const handler = createMcpHandler(
           if (!b) return fail("no_such_bucket", { bucket, hint: "Use an existing bucket name exactly, or \"unsorted\"." });
           bucketId = b.id;
         }
-        await db
+        // The owner guard is in the WHERE: a move the owner makes between the check and the write wins.
+        const written = await db
           .update(items)
           .set({ bucketId, status: bucketId ? "sorted" : "unsorted", sortedBy: "agent", sortedAt: new Date() })
-          .where(eq(items.id, cur.id));
+          .where(sql`${items.id} = ${cur.id} and ${items.sortedBy} is distinct from 'owner'`)
+          .returning({ id: items.id });
+        if (!written.length) return fail("owner_filed", { number, hint: "The owner moved this link by hand; leave it." });
         const row = await findItem(String(number));
         return text({ number, bucket: row?.bucketName ?? "Unsorted", status: row?.item.status });
       },

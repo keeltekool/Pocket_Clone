@@ -106,10 +106,13 @@ function BucketLabel({ item, buckets, onMove, onDelete }: { item: Card; buckets:
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        disabled={sorting ? undefined : false}
+        onClick={() => {
+          // Desktop has the trash icon, so a Sorting… chip opens nothing there (keyboard included).
+          if (sorting && window.matchMedia("(min-width: 768px)").matches) return;
+          setOpen((o) => !o);
+        }}
         className={`card-bucket-btn flex max-w-[160px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-sm px-2 py-1 text-micro transition-all duration-150 ease-out md:max-w-[200px] ${
-          sorting ? "text-ink-faint md:pointer-events-none" : "border border-cream-dark bg-cream text-ink-muted hover:border-ink-faint hover:bg-cream-dark"
+          sorting ? "text-ink-faint md:cursor-default" : "border border-cream-dark bg-cream text-ink-muted hover:border-ink-faint hover:bg-cream-dark"
         }`}
       >
         {sorting ? <span className="size-3 animate-spin rounded-full border-[1.5px] border-cream-dark border-t-terracotta" /> : <IconFolder className="shrink-0" />}
