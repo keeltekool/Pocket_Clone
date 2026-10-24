@@ -400,7 +400,7 @@ Vercel-functions layout (`api/*`, `vercel.json`).
 | `SHORTCUT_API_KEY` | iPhone Shortcut save via `/api/save` (exists) |
 | `ANTHROPIC_API_KEY` | Managed Agents (exists: key "Pocket-Clone 2", credit org) |
 | `MCP_TOKEN` | Bearer token for `/api/mcp` (Claude Code + the agent's vault) |
-| `POCKET_AGENT_ID`, `POCKET_ENV_ID`, `POCKET_VAULT_ID` | Managed Agents resources |
+| — | Managed Agents resource IDs (agent, environment, vault) live in `agent/ids.json`, committed; they are not secrets |
 
 ---
 
