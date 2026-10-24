@@ -1,0 +1,14 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { getSession } from "@/lib/auth";
+
+// Every /api route needs the session cookie except: /api/auth (login itself), /api/save (iPhone Shortcut, x-api-key)
+// and /api/mcp (bearer token). Pages check the cookie server-side and render the login form instead (SPEC §4.1).
+const OPEN = ["/api/auth", "/api/save", "/api/mcp"];
+
+export function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  if (OPEN.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || getSession(req)) return NextResponse.next();
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+export const config = { matcher: "/api/:path*" };

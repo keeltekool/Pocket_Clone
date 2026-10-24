@@ -1,0 +1,4 @@
+/* The design tokens live in livery/tokens.css (the Livery package of this app's look); the app imports them as is.
+   livery/starter is a demo of the tokens, not app code: keep its classes out of the scan. */
+@import "../../livery/tokens.css";
+@source not "../../livery";

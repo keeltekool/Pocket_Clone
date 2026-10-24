@@ -42,7 +42,7 @@ Playwright from `C:/Users/Kasutaja/.claude/scripts/` (createRequire, as in v1 `s
 Owner sees: the same Pocket Clone at the same URL, rebuilt; saving, buckets, move, delete, search, duplicate jump work;
 new links land as `Unsorted` until Phase 2.
 
-- [ ] **Task 1.1 — Next.js scaffold replaces v1**
+- [x] **Task 1.1 — Next.js scaffold replaces v1**
   - Files: delete `public/*.html`, `public/app.js`, `public/style.css`, `public/*.png`, `api/`, `lib/` (after porting),
     `drizzle.config.ts` (re-create), `tsconfig.json` (Next's); create `src/app/layout.tsx`, `src/app/globals.css`
     (imports `livery/tokens.css` content), `next.config.ts`, `vercel.json` (above), `package.json` (scripts `build`,
@@ -50,19 +50,21 @@ new links land as `Unsorted` until Phase 2.
   - Proof: `npm run build` clean; `npm start` serves `/` locally (use build + start, not `next dev`: Windows background
     shells break Turbopack's PostCSS worker).
   - Done when: build exits 0 and `curl -s localhost:3000 | grep -c "Pocket Clone"` ≥ 1.
-- [ ] **Task 1.2 — Data model + migration**
+- [x] **Task 1.2 — Data model + migration**
   - Files: `src/db/schema.ts` (`items`, `buckets`, `bucket_suggestions`, `login_failures` per SPEC §5),
     `src/db/index.ts` (neon-http Drizzle), `scripts/migrate-v2.mjs`.
   - Migration: explicit SQL, not blind `drizzle-kit push`: `DROP TABLE links; DROP TABLE buckets;` (old v1 tables, owner
     approved), create the three new tables + enums, `items.number` as `integer generated always as identity`, unique
     `items.url_key`, unique index on `lower(buckets.name)`, seed the 8 buckets. `login_failures` untouched.
+  - Deviation (24.10, unattended run): the permission classifier refused the `DROP TABLE` run. The migration renames
+    the v1 tables to `v1_links` / `v1_buckets` instead (nothing deleted); the owner drops them by hand when he likes.
   - Proof: script prints row counts: items 0, buckets 8, login_failures unchanged.
 - [ ] **Task 1.3 — Auth port**
   - Files: `src/lib/auth.ts` (v1 logic: `checkPassword`, `sessionCookie`, `clearCookie`, `getSession(req)`),
     `src/app/api/auth/route.ts` (GET/POST/DELETE as v1 incl. 429 cap), `src/proxy.ts` (Next 16 name) guarding pages
     and `/api/*` except `/api/auth`, `/api/save`, `/api/mcp`.
   - Proof: Playwright login (wrong → `Wrong password`; right → main view; cookie 180 days; unticked → session cookie).
-- [ ] **Task 1.4 — Page fetch + text**
+- [x] **Task 1.4 — Page fetch + text**
   - Files: `src/lib/page.ts`: `normalizeUrl(url): string` (SPEC §5 `urlKey` rules), `firstUrl(text): string | null`,
     `fetchPage(url): Promise<{ title: string | null; imageUrl: string | null; text: string | null }>` (v1
     `lib/metadata.ts` head logic + `@mozilla/readability` on `linkedom` for body text, max 60,000 chars, 8 s cap,
@@ -70,7 +72,7 @@ new links land as `Unsorted` until Phase 2.
   - Proof (unit check, logic no flow fully reaches): `scripts/check-page.mjs` asserts `normalizeUrl` on 6 cases
     (utm/fbclid strip, www, fragment, trailing slash, host case) and `firstUrl("Look at this https://a.ee/x ok")`;
     plus one real fetch of the Dokobit article returns Estonian title + text > 1,000 chars.
-- [ ] **Task 1.5 — Items + buckets API**
+- [x] **Task 1.5 — Items + buckets API**
   - Files: `src/app/api/items/route.ts` (GET list with `bucket`, `q`, `changedSince`; POST save),
     `src/app/api/items/[id]/route.ts` (PATCH move → `sortedBy: owner`, DELETE), `src/app/api/buckets/route.ts`,
     `src/app/api/buckets/[id]/route.ts`, `src/lib/items.ts`: `saveLink(input: string): Promise<{ item: Item; duplicate:
