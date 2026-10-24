@@ -1,39 +1,65 @@
 # Pocket Clone — STACK.md
 
-> Save-for-later link manager with AI categorization and iOS shortcut. Single owner, password gate.
+> Save-for-later link manager: the owner adds a link (iPhone Shortcut, desktop bookmarklet, paste box), a Claude Managed
+> Agent on Fable 5.1 reads the page and files it into one of his buckets, `pocket #N` pulls it into Claude Code over MCP.
+> Single owner, password gate. v2 (Next.js rebuild) built 24.10.2026 from `docs/SPEC.md` + `docs/plans/2026-10-24-pocket-clone-v2.md`.
 > Last updated: 2026-10-24
 
-## Services & Env Vars (4 on Vercel)
+## Stack
+
+Next.js 16.4.3 (App Router, `src/`), Tailwind 4.3 (tokens imported from `livery/tokens.css`, the Livery package of this
+look), Drizzle 0.45 + `@neondatabase/serverless` (neon-http), `mcp-handler` 2.3 + `@modelcontextprotocol/server` 2.3,
+`@anthropic-ai/sdk` 1.3 (Managed Agents beta), `@mozilla/readability` + `linkedom` for page text, zod 4. Fonts Fraunces +
+Source Sans 3 via `next/font/google`. Vercel functions in `fra1` (`vercel.json`), Neon in eu-central-1.
+
+## Services & Env Vars (5 on Vercel)
 
 | Service | Purpose | Env Var(s) |
 |---------|---------|------------|
-| — | Password gate (`lib/auth.ts`): HMAC-signed HttpOnly cookie, 180 days with "Remember this device", else browser session. Changing the value signs every device out. | `APP_PASSWORD` |
-| Neon | PostgreSQL (buckets, links); all rows use `user_id = 'owner'` | `DATABASE_URL` |
-| Anthropic | `claude-haiku-4-5` — AI link categorization (3.5 Haiku retired 19.02.2026; categorize failed until 28.09.2026) | `ANTHROPIC_API_KEY` |
-| — | iOS shortcut authentication (`/save.html?key=…&url=…`) | `SHORTCUT_API_KEY` |
+| — | Password gate (`src/lib/auth.ts`): HMAC-signed HttpOnly cookie, 180 days with "Remember this device", else browser session; 20 wrong passwords / 15 min close new logins (`login_failures`). Changing the value signs every device out. | `APP_PASSWORD` |
+| Neon | PostgreSQL: `items`, `buckets`, `bucket_suggestions`, `login_failures` (+ the old v1 tables renamed `v1_links` / `v1_buckets`, kept for the owner to drop) | `DATABASE_URL` |
+| Anthropic Managed Agents | Agent `pocket-sorter` (Fable 5.1, effort medium) files every save through the app's MCP server; one session per save, $1 list-cost cap. Resource IDs (env, vault, credential, agent) in `agent/ids.json`, prompt in `agent/sorter.md`, sync with `npm run agent:sync`. Key "Pocket-Clone 2" in the $100/mo credit org. | `ANTHROPIC_API_KEY` |
+| — | iPhone Shortcut: `POST /api/save` with header `x-api-key`; body `{ url }` may be any shared text containing a link | `SHORTCUT_API_KEY` |
+| — | Bearer token for `/api/mcp` (Claude Code user-scope server `pocket` + the agent's vault `static_bearer` credential) | `MCP_TOKEN` |
+| — | Local only (`.env.local`): `POCKET_AGENT=off` starts no agent sessions from a dev machine (the agent can only reach the deployed `/api/mcp`); a save then counts a failed attempt and the stuck rule turns it Unsorted | `POCKET_AGENT` |
 
-Env vars stored in: Vercel (production), `.env.local` (local dev)
+Env vars stored in: Vercel (production), `.env.local` (local). `vercel env add` via temp file + `cmd /c "... < file"`.
+
+## Scripts
+
+```bash
+npm run build && npx next start -p 3100      # local checks (never `next dev` from a background shell on Windows)
+node scripts/check-page.mjs                  # normalizeUrl / firstUrl / one real fetch (Dokobit) / PDF → nulls
+node scripts/check-api.mjs http://localhost:3100    # 16 HTTP steps incl. /api/save
+node scripts/check-mcp.mjs http://localhost:3100    # 401 + initialize + all six pocket_* tools
+node scripts/check-ui-flows.mjs [baseUrl]    # click-through 375/1440/1920; on prod waits for the real agent (5 min)
+npm run agent:sync                           # idempotent Managed Agents setup (env, vault + token, agent prompt/model)
+node scripts/migrate-v2.mjs                  # one-time v1 → v2 (refuses to run twice)
+node ~/.claude/scripts/ship.mjs / /setup     # push → Vercel git deploy → verify-deploy + check-ui-flows on prod
+```
+
+Flow scripts write only marker rows (`?pcflow=<run>` URLs, `pcflow-<run>` buckets/suggestions) and delete them in `finally`.
 
 ## Gotchas
 
 | Issue | Fix |
 |-------|-----|
-| Login box blank (Oct 2026) | Was Clerk loaded as `clerk-js@latest`; v6 moved the UI to `@clerk/ui`. Clerk removed 24.10.2026 for the password gate. Never load CDN scripts as `@latest`. |
-| Titles never filled (Oct 2026) | Public CORS proxy `api.allorigins.win` died (522). Metadata is fetched server-side: `lib/metadata.ts` via `/api/metadata` and `/api/save`. |
-| `vercel dev` DEV_RECURSIVE_INVOCATION | Don't add a `dev` script that calls `vercel dev`. It also doesn't load `.env.local`: `set -a; . ./.env.local; set +a; vercel dev --listen 4820` |
-| `FUNCTION_INVOCATION_FAILED` (tsconfig) | Use `module: "CommonJS"` + `moduleResolution: "node"` |
-| `FUNCTION_INVOCATION_FAILED` (handler format) | Use Vercel `(req, res)` format, NOT Web API `Request`/`Response` |
-| API key mismatch | `vercel env add` with a trailing newline breaks the value: temp file + `cmd /c "vercel env add NAME production < file"` |
-| Timestamp compare off by 3 h | Columns are `timestamp` (no zone, UTC). A JS `Date` passed to raw `neon` SQL goes out with the local +03:00 offset, which Postgres drops. Use DB-side `now()` or text (`now()::timestamp::text`); Drizzle query builders send UTC and are fine. |
-| Login blocked (429) | 20 wrong passwords in 15 min close new logins (`login_failures`). Clear with `delete from login_failures`. |
-| Frontend data empty | Drizzle returns camelCase, code expected snake_case — match property names |
-| `dotenv` loads wrong file | Use `config({ path: ".env.local" })`, not `import "dotenv/config"` |
-| Slow link saving (~30s) | Save instantly, fetch metadata in background |
+| Untyped Date in a Drizzle comparison (`lt(sql\`…\`, new Date())`) went out in local time (+03:00) and a `timestamp` column dropped the offset → `retryStuck` re-dispatched fresh items 3 h early | Compute cutoffs in SQL (`now()`, `interval`); column-typed params (`items.sortedAt: new Date()`) are fine |
+| Drizzle wraps Neon errors (`DrizzleQueryError`), so `e.code` is undefined | Read `e.cause?.code ?? e.code` (`src/lib/buckets.ts` `pgCode`) |
+| Next route files may export only HTTP handlers + config (`maxDuration`); a helper export fails the build | Helpers live in `src/lib/` |
+| `tsx` runs `.ts` as CommonJS without `"type": "module"` → top-level await = TransformError | Scripts with top-level await are `.mts` (`scripts/agent-sync.mts`) |
+| mcp-handler 2.x: `createMcpHandler(init, options)`, `registerTool` with a full `z.object`, no `basePath`/`maxDuration` options | Mount at `src/app/api/mcp/route.ts`, `export const maxDuration`, bearer check before the handler |
+| Managed Agents MCP toolset defaults to `always_ask` → an unattended session stalls on the first tool call | `default_config.permission_policy: { type: "always_allow" }` on the `mcp_toolset` |
+| `claude mcp add … --header "Authorization: Bearer <t>"` through `spawnSync(..., { shell: true })` splits the header at the space | Spawn `claude.exe` directly without a shell |
+| Playwright strict-mode "resolved to 2 elements" when a card renders mobile and desktop copies of its actions | One actions row placed by the CSS grid (`col-start`/`row-start`), not two copies |
+| The unattended run's permission classifier refused `DROP TABLE links/buckets` | Migration renames them to `v1_*`; owner drops by hand |
+| Vercel Hobby: 100 deployments per rolling 24 h for the whole account | Count first (`ad-hoc-analysis/security-sweep-2026-10/deps-scripts/vcount.mjs`); ship only at gates |
+| Login box blank (Oct 2026, v1): `clerk-js@latest` became v6 | Clerk removed for the password gate; never load CDN scripts as `@latest` |
+| x.com / LinkedIn give no text to bots | x.com via `publish.twitter.com/oembed`; others sort on title + URL |
+| Page `/add` is a 420×260 popup | The compact login variant (`<Login compact>`) fits it; test at that viewport |
 
 ## Deployment
 
-```bash
-node ~/.claude/scripts/ship.mjs /                      # push → Vercel git deploy → verify-deploy + check-ui-flows
-node scripts/check-ui-flows.mjs [baseUrl]              # click-through (password login, 1440 + 375), cleans up its rows
-npx drizzle-kit push                                   # push DB schema
-```
+Commit → `node ~/.claude/scripts/ship.mjs / /setup` from the repo root (Git Bash: `MSYS_NO_PATHCONV=1`). Vercel project
+`pocket-clone`, git-linked, functions in `fra1` (check `x-vercel-id`). Deploy only at gates; a failed check → `git revert`
+first. Cost per sort is measured on the session's `usage.list_cost` after a prod save.
