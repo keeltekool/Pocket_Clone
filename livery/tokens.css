@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+/* Pocket Clone "warm paper" design tokens, Tailwind 4 ready.
+   Values are verbatim from public/style.css :root (24.10.2026). Names move into Tailwind namespaces so each token is a
+   utility: --cream → --color-cream (bg-cream), --radius-md (rounded-md), --shadow-md (shadow-md), --ease-out (ease-out).
+   Fonts are next/font variables set in app/layout.tsx: --font-fraunces and --font-source-sans. */
+
+/* static: every token is emitted, so var() lookups in utilities and arbitrary values always resolve */
+@theme static {
+  /* Warm paper */
+  --color-cream: #FAF7F2;       /* page */
+  --color-cream-dark: #F0EBE3;  /* every border and divider; thumb, count and chip fills */
+  --color-warm-white: #FFFDFB;  /* surfaces: fields, cards, menus, sheet; text on terracotta */
+
+  /* Ink tones */
+  --color-ink: #2C2825;
+  --color-ink-soft: #4A4542;
+  --color-ink-muted: #7A7570;
+  --color-ink-faint: #B5B0A8;
+
+  /* Terracotta accent spectrum */
+  --color-terracotta: #C85A3B;
+  --color-terracotta-soft: #D97B5F;
+  --color-terracotta-glow: rgba(200, 90, 59, 0.12);
+  --color-terracotta-pale: #F5E6E0;
+
+  /* Functional */
+  --color-danger: #B8463A;
+  --color-danger-soft: rgba(184, 70, 58, 0.1);
+  --color-scrim: rgba(44, 40, 37, 0.4);
+
+  /* Type families */
+  --font-display: var(--font-fraunces), 'Fraunces', Georgia, serif;
+  --font-body: var(--font-source-sans), 'Source Sans 3', -apple-system, sans-serif;
+
+  /* Type scale. Line height is inherited (body 1.6) unless a level sets its own, as in the source */
+  --text-hero: clamp(2.5rem, 8vw, 3.5rem);
+  --text-hero--font-weight: 300;
+  --text-hero--letter-spacing: -0.02em;
+  --text-title: 1.75rem;
+  --text-title--font-weight: 500;
+  --text-title--letter-spacing: -0.01em;
+  --text-title-sm: 1.5rem;
+  --text-title-sm--font-weight: 500;
+  --text-title-sm--letter-spacing: -0.01em;
+  --text-heading: 1.25rem;
+  --text-heading--font-weight: 500;
+  --text-subheading: 1.125rem;
+  --text-subheading--font-weight: 500;
+  --text-card: 1rem;
+  --text-card--font-weight: 500;
+  --text-card--line-height: 1.4;
+  --text-lede: 1.125rem;
+  --text-body: 1rem;
+  --text-label: 0.9375rem;
+  --text-small: 0.875rem;
+  --text-meta: 0.8125rem;
+  --text-micro: 0.75rem;
+  --text-overline: 0.6875rem;
+  --text-overline--font-weight: 600;
+  --text-overline--letter-spacing: 0.08em;
+  --leading-body: 1.6;
+  --text-shadow-glow: 0 2px 20px rgba(200, 90, 59, 0.08);
+
+  /* Borders */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(44, 40, 37, 0.04);
+  --shadow-md: 0 4px 12px rgba(44, 40, 37, 0.06), 0 1px 3px rgba(44, 40, 37, 0.04);
+  --shadow-lg: 0 12px 32px rgba(44, 40, 37, 0.08), 0 4px 8px rgba(44, 40, 37, 0.04);
+  --shadow-card-hover: 0 16px 40px rgba(44, 40, 37, 0.1), 0 6px 12px rgba(44, 40, 37, 0.05);
+  --shadow-popover: 0 10px 40px rgba(0, 0, 0, 0.15);
+
+  /* Widths */
+  --container-page: 1400px;
+  --container-sidebar: 240px;
+  --container-form: 340px;
+  --container-popover: 180px;
+  --container-menu: 140px;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Motion */
+  --animate-auth-in: authFadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-main-in: mainFadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-card-in: cardSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  --animate-shake: shake 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-spin: spin 0.8s linear infinite;
+
+  @keyframes authFadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes mainFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes cardSlideIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+}
+
+/* Spacing scale (source names). Tailwind's 0.25rem step covers it: xs 1, sm 2, md 4, lg 6, xl 10, 2xl 16. */
+:root {
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.5rem;
+  --space-2xl: 4rem;
+}
+
+/* The login ground: a soft terracotta glow over cream */
+@utility bg-glow {
+  background: radial-gradient(ellipse 600px 400px at 50% 40%, var(--color-terracotta-glow) 0%, transparent 70%), var(--color-cream);
+}
+
+@layer base {
+  html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    min-height: 100vh;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    line-height: var(--leading-body);
+    color: var(--color-ink);
+    background-color: var(--color-cream);
+    /* Subtle paper texture */
+    background-image:
+      radial-gradient(ellipse at 20% 30%, rgba(200, 90, 59, 0.03) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 70%, rgba(200, 90, 59, 0.02) 0%, transparent 50%);
+  }
+  /* Controls keep the browser's normal line height, as in the source (Tailwind's preflight would inherit 1.6) */
+  button,
+  input {
+    line-height: normal;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-terracotta);
+    outline-offset: 2px;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+  ::selection {
+    background: var(--color-terracotta-pale);
+    color: var(--color-ink);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-cream);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ink-faint);
+    border-radius: 5px;
+    border: 2px solid var(--color-cream);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-muted);
+  }
+}

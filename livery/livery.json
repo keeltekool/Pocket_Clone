@@ -1,0 +1,36 @@
+{
+  "slug": "pocket-clone",
+  "name": "Pocket Clone",
+  "tagline": "Warm paper reading room: cream page, ink text, one terracotta accent, Fraunces serif titles over Source Sans 3",
+  "sourceProject": "Pocket_Clone",
+  "tags": ["warm", "serif", "light", "reading", "minimal"],
+  "constraints": "Light only: cream page (#FAF7F2) with a faint terracotta paper texture, warm-white (#FFFDFB) surfaces, cream-dark (#F0EBE3) for every border, divider and quiet fill. Terracotta (#C85A3B) is the single accent: primary buttons, the active nav row, selected options, focus rings, card-title hover; terracotta-soft is its hover. Fraunces carries titles only (page title, card titles, sheet and empty-state headings, the 56px login hero at weight 300); Source Sans 3 carries everything else. Resting surfaces are flat with a 1px (fields 1.5px) cream-dark border; shadows appear only on hover lift and on floating menus. Three radii: 6px (rows, chips, small buttons, thumbnails), 10px (fields, primary buttons, cards, menus, count pills), 14px (bottom-sheet top corners). One breakpoint at 768px: below it the sidebar becomes a filter button plus a bottom sheet, the URL form stacks with a full-width button, card dates and chip labels hide, delete shows without hover. No status colours beyond danger; no icon package (inline 24-grid stroke icons).",
+  "fonts": [
+    { "family": "Fraunces", "role": "display", "weights": "300,500", "source": "google-fonts" },
+    { "family": "Source Sans 3", "role": "ui", "weights": "400,500,600", "source": "google-fonts" }
+  ],
+  "tokens": "tokens.css",
+  "dependencies": {},
+  "roles": {
+    "accent": "--color-terracotta",
+    "accentHover": "--color-terracotta-soft",
+    "ink": "--color-ink",
+    "muted": "--color-ink-muted",
+    "faint": "--color-ink-faint",
+    "bg": "--color-cream",
+    "surface": "--color-warm-white",
+    "line": "--color-cream-dark",
+    "danger": "--color-danger",
+    "radiusControl": "--radius-md",
+    "radiusChip": "--radius-sm",
+    "radiusCard": "--radius-md"
+  },
+  "templates": [
+    { "name": "library", "route": "/", "original": "inputs/library-1440.png", "original375": "inputs/library-375.png" },
+    { "name": "login", "route": "/login", "original": "inputs/login-1440.png", "original375": "inputs/login-375.png" },
+    { "name": "empty", "route": "/empty", "original": "inputs/empty-1440.png", "original375": "inputs/empty-375.png" },
+    { "name": "menus", "route": "/menus", "original": "inputs/menus-1440.png", "original375": "inputs/menus-375.png" },
+    { "name": "sheet", "route": "/sheet", "original": "inputs/sheet-1440.png", "original375": "inputs/sheet-375.png" }
+  ],
+  "inputs": []
+}

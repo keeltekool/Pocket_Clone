@@ -1,0 +1,118 @@
+import type { ComponentProps, ReactNode } from "react";
+
+// Icons: inline 24-grid strokes, 2px, currentColor. The system ships no icon package.
+type IconProps = { size?: number; className?: string };
+const svg = (size: number, className = "", fill = "none") => ({
+  width: size,
+  height: size,
+  viewBox: "0 0 24 24",
+  fill,
+  stroke: fill === "none" ? "currentColor" : undefined,
+  strokeWidth: 2,
+  className,
+  "aria-hidden": true,
+});
+export const IconChevron = ({ size = 12, className }: IconProps) => (
+  <svg {...svg(size, className)}><polyline points="6 9 12 15 18 9" /></svg>
+);
+export const IconClose = ({ size = 20, className }: IconProps) => (
+  <svg {...svg(size, className)}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+);
+export const IconFolder = ({ size = 14, className }: IconProps) => (
+  <svg {...svg(size, className)}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+);
+export const IconTrash = ({ size = 18, className }: IconProps) => (
+  <svg {...svg(size, className)}><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+);
+export const IconPencil = ({ size = 14, className }: IconProps) => (
+  <svg {...svg(size, className)}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+);
+export const IconCheck = ({ size = 16, className }: IconProps) => (
+  <svg {...svg(size, className)}><polyline points="20 6 9 17 4 12" /></svg>
+);
+export const IconDots = ({ size = 16, className }: IconProps) => (
+  <svg {...svg(size, className, "currentColor")}><circle cx="12" cy="6" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="18" r="2" /></svg>
+);
+
+/** Primary action: solid terracotta, lifts 1px on hover. `sheen` adds the faint top highlight the hero form uses. */
+export function Button({ sheen, className = "", ...props }: ComponentProps<"button"> & { sheen?: boolean }) {
+  const sheenCls = sheen
+    ? "relative overflow-hidden before:absolute before:inset-0 before:bg-linear-to-b before:from-white/10 before:to-transparent before:opacity-0 before:transition-opacity before:duration-250 before:content-[''] hover:before:opacity-100"
+    : "";
+  return (
+    <button
+      className={`cursor-pointer whitespace-nowrap rounded-md bg-terracotta px-10 py-4 text-body font-semibold text-warm-white transition-all duration-250 ease-out hover:-translate-y-px hover:bg-terracotta-soft hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70 ${sheenCls} ${className}`}
+      {...props}
+    />
+  );
+}
+
+/** Quiet outlined button (header actions). */
+export function GhostButton({ className = "", ...props }: ComponentProps<"button">) {
+  return (
+    <button
+      className={`cursor-pointer rounded-sm border-[1.5px] border-cream-dark bg-transparent px-4 py-2 text-small font-medium text-ink-muted transition-all duration-200 ease-out hover:border-ink-faint hover:bg-warm-white hover:text-ink ${className}`}
+      {...props}
+    />
+  );
+}
+
+/** Large text field: warm-white, 1.5px cream-dark border; focus turns the border terracotta-soft with a 4px glow ring. */
+export function TextField({ className = "", ...props }: ComponentProps<"input">) {
+  return (
+    <input
+      className={`w-full rounded-md border-[1.5px] border-cream-dark bg-warm-white px-6 py-4 text-body text-ink outline-none transition-all duration-250 ease-out placeholder:text-ink-faint focus:border-terracotta-soft focus:ring-4 focus:ring-terracotta-glow disabled:opacity-60 ${className}`}
+      {...props}
+    />
+  );
+}
+
+/** Field + primary button in one row on desktop, stacked full width on phones. */
+export function InlineForm({ field, action }: { field: ReactNode; action: ReactNode }) {
+  return <form className="mb-10 flex flex-col gap-4 md:flex-row [&>button]:w-full md:[&>button]:w-auto">{field}{action}</form>;
+}
+
+export function Checkbox({ label, ...props }: ComponentProps<"input"> & { label: ReactNode }) {
+  return (
+    <label className="flex cursor-pointer select-none items-center gap-2 text-small text-ink-muted">
+      <input type="checkbox" className="accent-terracotta" {...props} />
+      {label}
+    </label>
+  );
+}
+
+export function ErrorNote({ children }: { children: ReactNode }) {
+  return <p className="mt-4 animate-shake rounded-sm bg-danger-soft px-4 py-2 text-center text-small text-danger">{children}</p>;
+}
+
+/** Count pill beside nav and sheet rows. */
+export function Count({ children }: { children: ReactNode }) {
+  return <span className="ml-2 shrink-0 rounded-md bg-cream-dark px-2 py-0.5 text-micro text-ink-faint">{children}</span>;
+}
+
+export function EmptyState({ title, hint }: { title: ReactNode; hint?: ReactNode }) {
+  return (
+    <div className="px-6 py-16 text-center text-ink-muted">
+      <p className="mb-2 font-display text-heading text-ink-soft">{title}</p>
+      {hint && <p className="text-label text-ink-faint">{hint}</p>}
+    </div>
+  );
+}
+
+export function Loading({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-center gap-2.5 p-6 text-label text-ink-muted">
+      <span className="size-[18px] animate-spin rounded-full border-2 border-cream-dark border-t-terracotta" />
+      {children}
+    </div>
+  );
+}
+
+/** Brand slot: the system stores no logo. The source's brand is the serif title alone. */
+export function BrandMark() {
+  return (
+    <span className="grid size-9 shrink-0 place-items-center rounded-sm border-[1.5px] border-dashed border-ink-faint text-overline uppercase text-ink-faint">
+      Mark
+    </span>
+  );
+}
