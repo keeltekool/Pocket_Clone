@@ -2,7 +2,7 @@ import { and, desc, eq, gt, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { buckets, items } from "@/db/schema";
 import { isUuid } from "@/lib/buckets";
-import { domainOf } from "@/lib/format";
+import { bucketLabel, domainOf } from "@/lib/format";
 import { fetchPage, firstUrl, normalizeUrl } from "@/lib/page";
 import { dispatchSort } from "@/lib/sorter";
 
@@ -107,6 +107,18 @@ export async function saveLink(input: string): Promise<{ item: Card; duplicate: 
   if (!inserted) return { item: (await getCard(eq(items.urlKey, urlKey)))!, duplicate: true };
   dispatchSort(inserted.number);
   return { item: toCard({ ...inserted, bucketName: null }), duplicate: false };
+}
+
+// The iPhone Shortcut's reply (both /api/save routes): the line its notification shows.
+export async function shortcutSave(input: string): Promise<{ status: number; message: string; number?: number }> {
+  try {
+    const { item, duplicate } = await saveLink(input);
+    if (duplicate) return { status: 200, message: `Already saved #${item.number} · ${bucketLabel(item.status, item.bucket?.name)}`, number: item.number };
+    return { status: 201, message: `Saved #${item.number}`, number: item.number };
+  } catch (e) {
+    if (e instanceof NotALink) return { status: 400, message: "No link found" };
+    throw e;
+  }
 }
 
 // Move a link (SPEC §6.6 owner move, §6.4 agent filing). The agent only ever files Sorting…/Unsorted links and never

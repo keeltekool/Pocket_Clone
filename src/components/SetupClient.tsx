@@ -11,7 +11,8 @@ export function SetupClient({ site, secrets: initial }: { site: string; secrets:
   const [secrets, setSecrets] = useState(initial);
   if (!secrets) return <Login onAuthed={() => location.reload()} />;
 
-  const saveUrl = `${site}/api/save`;
+  // The short Shortcut: the key rides in the path, the shared text follows "?url=" (api/save/[key]).
+  const saveUrl = `${site}/api/save/${secrets.shortcutKey}?url=`;
   // void(): a javascript: URL that returns a value would replace the page in some browsers.
   const bookmarklet = `javascript:void(window.open('${site}/add?url='+encodeURIComponent(location.href),'pocket','width=420,height=260,popup'))`;
   const mcpCommand = `claude mcp add --scope user --transport http pocket ${site}/api/mcp --header "Authorization: Bearer ${secrets.mcpToken}"`;
@@ -62,36 +63,19 @@ export function SetupClient({ site, secrets: initial }: { site: string; secrets:
                 Open <b>Shortcuts</b> → <b>+</b> (top right). Tap the name at the top → <b>Rename</b> → <Value>Save to Pocket</Value>.
               </li>
               <li>
-                Tap <b>ⓘ</b> (bottom bar) → turn on <b>Show in Share Sheet</b> → <b>Done</b>. A block appears at the top: tap its blue input types → <b>Clear</b> → tick only <b>URLs</b> and <b>Text</b>. Set <b>If there&apos;s no input</b> to <b>Get Clipboard</b>.
+                Tap <b>ⓘ</b> (bottom bar) → turn on <b>Show in Share Sheet</b> → <b>Done</b>. In the block that appears at the top, tap the blue input types → <b>Clear</b> → tick <b>URLs</b> and <b>Text</b>.
               </li>
               <li>
-                Search actions for <b>Get Contents of URL</b> and add it. Tap the blue <b>URL</b> → paste:
+                Add the action <b>Get Contents of URL</b>. Tap its blue <b>URL</b>, paste this line, then tap <b>Shortcut Input</b> in the bar above the keyboard:
                 <span className="mt-2 flex flex-wrap items-center gap-2">
                   <Value id="save-url">{saveUrl}</Value> <Copy id="copy-save-url" text={saveUrl} />
                 </span>
               </li>
               <li>
-                Tap the <b>›</b> on that action to open its options:
-                <ul className="mt-2 flex list-disc flex-col gap-2 pl-5">
-                  <li>
-                    Method → <b>POST</b>
-                  </li>
-                  <li className="flex flex-wrap items-center gap-2">
-                    Headers → <b>Add new header</b>: Key <Value>x-api-key</Value>, Text <Value id="shortcut-key">{secrets.shortcutKey}</Value> <Copy id="copy-key" text={secrets.shortcutKey} />
-                  </li>
-                  <li>
-                    Request Body → <b>JSON</b> → <b>Add new field</b> → <b>Text</b>: Key <Value>url</Value>, Text: tap it, then <b>Select Variable</b> → <b>Shortcut Input</b>.
-                  </li>
-                </ul>
+                Add the action <b>Show Notification</b>. Tap its text, then tap <b>Contents of URL</b> in the bar above the keyboard. Tap <b>Done</b>.
               </li>
               <li>
-                Add <b>Get Dictionary Value</b>. It reads <b>Get Value for Key in Contents of URL</b>: tap <b>Key</b> → <Value>message</Value>.
-              </li>
-              <li>
-                Add <b>Show Notification</b>. Tap its text → <b>Select Variable</b> → <b>Dictionary Value</b>. Tap <b>Done</b>.
-              </li>
-              <li>
-                Test: open any page in Safari → <b>Share</b> → <b>Save to Pocket</b> → a notification says <Value>Saved #58</Value>. Not in the first row? Scroll the share sheet to <b>Edit Actions</b> and add it to Favourites.
+                Test: open any page → <b>Share</b> → <b>Save to Pocket</b> → a notification says <Value>Saved #58</Value>. Not in the first row? Scroll the share sheet to <b>Edit Actions</b> and add it to Favourites.
               </li>
             </ol>
           </Section>

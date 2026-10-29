@@ -699,13 +699,11 @@ try {
     await toast(page, `Deleted #${number}`);
   });
 
-  await step("/setup (via the header link): three sections, Copy buttons, bookmarklet, masked MCP command", async () => {
+  await step("/setup (via the header link): three sections, Shortcut line Copy, bookmarklet, masked MCP command", async () => {
     await page.click('header a[href="/setup"]');
     for (const id of ["#iphone", "#desktop", "#claude-code"]) await page.locator(id).waitFor({ timeout: 10_000 });
     await page.click("#copy-save-url");
-    expect((await page.evaluate(() => navigator.clipboard.readText())) === `${SITE}/api/save`, "save URL not copied");
-    await page.click("#copy-key");
-    expect((await page.evaluate(() => navigator.clipboard.readText())) === process.env.SHORTCUT_API_KEY, "key not copied");
+    expect((await page.evaluate(() => navigator.clipboard.readText())) === `${SITE}/api/save/${process.env.SHORTCUT_API_KEY}?url=`, "Shortcut line not copied");
     const shown = await page.locator("#mcp-command").innerText();
     expect(shown.includes("••••") && !shown.includes(process.env.MCP_TOKEN), "MCP token visible on the page");
     await page.click("#copy-mcp");

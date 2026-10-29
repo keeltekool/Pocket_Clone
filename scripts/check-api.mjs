@@ -56,6 +56,23 @@ try {
   assert.equal(newShortcut.body.message, `Saved #${newShortcut.body.number}`);
   ok("/api/save (Shortcut): 401 wrong key, 400 no link, duplicate from text, new → Saved #N");
 
+  // The short Shortcut: GET /api/save/<key>?url=<raw shared text>, plain-text reply.
+  const short = async (rest, key = process.env.SHORTCUT_API_KEY) => {
+    const r = await fetch(`${BASE}/api/save/${key}?url=${rest}`);
+    return { status: r.status, text: await r.text(), type: r.headers.get("content-type") };
+  };
+  assert.equal((await short(URL_A, "wrong-key")).status, 401);
+  const rawLink = `https://en.wikipedia.org/w/index.php?title=Hypertext&pcflow=${RUN}`; // its "&" must survive
+  const shortNew = await short(rawLink);
+  assert.equal(shortNew.status, 201, shortNew.text);
+  assert.ok(/^Saved #\d+$/.test(shortNew.text) && shortNew.type.startsWith("text/plain"), shortNew.text);
+  const [{ url: storedUrl }] = await sql`select url from items where number = ${Number(shortNew.text.slice(7))}`;
+  assert.equal(storedUrl, rawLink);
+  const shortDup = await short(encodeURIComponent(`Look at this ${URL_A} nice`));
+  assert.equal(shortDup.text, `Already saved #${item.number} · Unsorted`);
+  assert.equal((await short(encodeURIComponent("no link here"))).text, "No link found");
+  ok("/api/save/<key> (short Shortcut): 401 wrong key, raw link keeps its &, encoded text → duplicate, no link → 400");
+
   const dup = await api("/api/items", { method: "POST", ...json({ url: URL_DUP }) });
   assert.equal(dup.status, 200);
   assert.ok(dup.body.duplicate === true && dup.body.item.number === item.number, JSON.stringify(dup.body));
