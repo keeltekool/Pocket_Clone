@@ -718,6 +718,18 @@ try {
     await page.locator("#url-input").waitFor({ timeout: 10_000 });
   });
 
+  await step("Home Screen app: apple-touch-icon is a PNG, manifest opens standalone, iOS web-app meta set", async () => {
+    const icon = await page.getAttribute('link[rel="apple-touch-icon"]', "href");
+    const manifest = await page.getAttribute('link[rel="manifest"]', "href");
+    expect(icon && manifest, `icon ${icon}, manifest ${manifest}`);
+    const png = await page.request.get(new URL(icon, BASE).href);
+    expect(png.ok() && png.headers()["content-type"] === "image/png", `apple-icon: ${png.status()} ${png.headers()["content-type"]}`);
+    const m = await (await page.request.get(new URL(manifest, BASE).href)).json();
+    expect(m.display === "standalone" && m.start_url === "/", `manifest: ${JSON.stringify(m)}`);
+    expect((await page.getAttribute('meta[name="mobile-web-app-capable"]', "content")) === "yes", "mobile-web-app-capable missing");
+    await page.locator("#url-input").waitFor({ timeout: 10_000 });
+  });
+
   await step("logout locks the app, also after reload", async () => {
     await page.click("#logout-btn");
     await page.locator("#auth-form").waitFor({ state: "visible", timeout: 5_000 });

@@ -45,39 +45,53 @@ export function SetupClient({ site, secrets: initial }: { site: string; secrets:
         </nav>
 
         <main className="flex min-w-0 max-w-[72ch] flex-1 flex-col gap-12">
-          <Section id="iphone" title="iPhone — Share → Save to Pocket" lede="One Shortcut, built once in the Shortcuts app. After that every share sheet has Save to Pocket.">
+          <Section id="iphone" title="iPhone" lede="Do this on the iPhone, with this page open in Safari: the Copy buttons put each value on the phone's clipboard.">
+            <h3 className="mb-3 font-display text-lede text-ink">1 · App on the Home Screen</h3>
+            <ol className="mb-8 flex list-decimal flex-col gap-4 pl-6 text-body text-ink">
+              <li>
+                In Safari on this site, tap <b>Share</b> (square with arrow) → <b>Add to Home Screen</b> → <b>Open as Web App</b> on (if shown) → <b>Add</b>.
+              </li>
+              <li>
+                Open <b>Pocket</b> from the Home Screen and log in once, <b>Remember this device</b> ticked. It keeps its own login, apart from Safari.
+              </li>
+            </ol>
+
+            <h3 className="mb-3 font-display text-lede text-ink">2 · Save to Pocket in every share sheet</h3>
             <ol className="flex list-decimal flex-col gap-4 pl-6 text-body text-ink">
               <li>
-                Open <b>Shortcuts</b>, tap <b>+</b>, name it <Value>Save to Pocket</Value>.
+                Open <b>Shortcuts</b> → <b>+</b> (top right). Tap the name at the top → <b>Rename</b> → <Value>Save to Pocket</Value>.
               </li>
               <li>
-                Tap <b>ⓘ</b> → turn on <b>Show in Share Sheet</b>; accept <b>URLs</b>, <b>Safari web pages</b> and <b>Text</b>.
+                Tap <b>ⓘ</b> (bottom bar) → turn on <b>Show in Share Sheet</b> → <b>Done</b>. A block appears at the top: tap its blue input types → <b>Clear</b> → tick only <b>URLs</b> and <b>Text</b>. Set <b>If there&apos;s no input</b> to <b>Get Clipboard</b>.
               </li>
               <li>
-                Add action <b>Get Contents of URL</b>:
-                <ul className="mt-2 flex flex-col gap-2 pl-0">
+                Search actions for <b>Get Contents of URL</b> and add it. Tap the blue <b>URL</b> → paste:
+                <span className="mt-2 flex flex-wrap items-center gap-2">
+                  <Value id="save-url">{saveUrl}</Value> <Copy id="copy-save-url" text={saveUrl} />
+                </span>
+              </li>
+              <li>
+                Tap the <b>›</b> on that action to open its options:
+                <ul className="mt-2 flex list-disc flex-col gap-2 pl-5">
+                  <li>
+                    Method → <b>POST</b>
+                  </li>
                   <li className="flex flex-wrap items-center gap-2">
-                    URL <Value id="save-url">{saveUrl}</Value> <Copy id="copy-save-url" text={saveUrl} />
+                    Headers → <b>Add new header</b>: Key <Value>x-api-key</Value>, Text <Value id="shortcut-key">{secrets.shortcutKey}</Value> <Copy id="copy-key" text={secrets.shortcutKey} />
                   </li>
                   <li>
-                    Method <b>POST</b>
-                  </li>
-                  <li className="flex flex-wrap items-center gap-2">
-                    Header <Value>x-api-key</Value> = <Value id="shortcut-key">{secrets.shortcutKey}</Value> <Copy id="copy-key" text={secrets.shortcutKey} />
-                  </li>
-                  <li>
-                    Request Body <b>JSON</b>: key <Value>url</Value> = <b>Shortcut Input</b>
+                    Request Body → <b>JSON</b> → <b>Add new field</b> → <b>Text</b>: Key <Value>url</Value>, Text: tap it, then <b>Select Variable</b> → <b>Shortcut Input</b>.
                   </li>
                 </ul>
               </li>
               <li>
-                Add <b>Get Dictionary Value</b> → key <Value>message</Value> from <b>Contents of URL</b>.
+                Add <b>Get Dictionary Value</b>. It reads <b>Get Value for Key in Contents of URL</b>: tap <b>Key</b> → <Value>message</Value>.
               </li>
               <li>
-                Add <b>Show Notification</b> with <b>Dictionary Value</b>.
+                Add <b>Show Notification</b>. Tap its text → <b>Select Variable</b> → <b>Dictionary Value</b>. Tap <b>Done</b>.
               </li>
               <li>
-                Test: share any page → <b>Save to Pocket</b> → you see <Value>Saved #58</Value>.
+                Test: open any page in Safari → <b>Share</b> → <b>Save to Pocket</b> → a notification says <Value>Saved #58</Value>. Not in the first row? Scroll the share sheet to <b>Edit Actions</b> and add it to Favourites.
               </li>
             </ol>
           </Section>

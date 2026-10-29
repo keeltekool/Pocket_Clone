@@ -11,9 +11,10 @@ export const metadata: Metadata = {
   title: "Pocket Clone",
   description: "Save links for later",
   robots: { index: false, follow: false },
+  appleWebApp: { capable: true, title: "Pocket" },
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#FAF7F2" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
